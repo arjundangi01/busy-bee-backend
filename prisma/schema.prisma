@@ -4,10 +4,4 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model HealthCheck {
-  id        String   @id @default(uuid())
-  checkedAt DateTime @default(now())
 }

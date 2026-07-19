@@ -1,9 +1,10 @@
 import { Response } from "express";
+import { IApiSuccessPayload } from "@/utils/interfaces";
 
 export const SuccessResponse = <T>(
   res: Response,
   statusCode: number,
-  payload: { message: string; data?: T },
+  payload: IApiSuccessPayload<T>,
 ): Response => {
   return res.status(statusCode).json({
     success: true,

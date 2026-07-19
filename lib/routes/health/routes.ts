@@ -4,7 +4,7 @@ import { SuccessResponse } from "@/utils/helpers/apiResponse";
 import { HealthHelpers } from "@/routes/health/helpers";
 
 export class HealthRoutes {
-  public static async getStatus(req: Request, res: Response, next: NextFunction) {
+  public static async getStatus(_req: Request, res: Response, next: NextFunction) {
     try {
       const data = await HealthHelpers.getStatus();
       return SuccessResponse(res, httpStatus.OK, { message: "success", data });
