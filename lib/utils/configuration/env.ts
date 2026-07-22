@@ -24,4 +24,7 @@ export const env = {
   sessionTokenSecret: process.env.SESSION_TOKEN_SECRET,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   mode: (process.env.NODE_ENV as ENV) ?? ENV.DEVELOPMENT,
+  // DD-003: optional, not required at boot — no RevenueCat account/products
+  // exist yet. The webhook route rejects requests until this is set for real.
+  revenueCatWebhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET ?? null,
 };

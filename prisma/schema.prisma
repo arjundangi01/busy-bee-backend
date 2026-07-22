@@ -19,6 +19,19 @@ enum TaskStatus {
 enum SessionEndReason {
   MISSION_COMPLETED
   EARLY_EXIT
+  TIME_LIMIT_REACHED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  BILLING_ISSUE
+}
+
+enum SubscriptionProvider {
+  IOS
+  ANDROID
 }
 
 model User {
@@ -35,7 +48,25 @@ model User {
   backgroundExecutionGranted Boolean?
   notificationsGranted       Boolean?
 
-  missions Mission[]
+  missions     Mission[]
+  subscription Subscription?
+}
+
+// 4.1 Paywall/Upgrade — absence of a row (or a non-ACTIVE status) means Free tier.
+// Populated/updated by the RevenueCat webhook (see routes/webhooks); no local
+// billing logic lives here, this only mirrors RevenueCat's entitlement state.
+model Subscription {
+  id                    String               @id @default(cuid())
+  userId                String               @unique
+  user                  User                 @relation(fields: [userId], references: [id])
+  status                SubscriptionStatus
+  provider              SubscriptionProvider
+  productId             String
+  originalTransactionId String?
+  expiresAt             DateTime?
+  autoRenewing          Boolean              @default(true)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 }
 
 model Mission {
