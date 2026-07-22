@@ -4,6 +4,7 @@ import { AuthRouter } from "@/routes/auth";
 import { MissionsRouter } from "@/routes/missions";
 import { DashboardRouter } from "@/routes/dashboard";
 import { FocusSessionsRouter } from "@/routes/focus-sessions";
+import { ProgressRouter } from "@/routes/progress";
 
 export class ApiRouter {
   public router: Router;
@@ -15,5 +16,6 @@ export class ApiRouter {
     this.router.use("/missions", new MissionsRouter().router);
     this.router.use("/dashboard", new DashboardRouter().router);
     this.router.use("/focus-sessions", new FocusSessionsRouter().router);
+    this.router.use("/progress", new ProgressRouter().router);
   }
 }
