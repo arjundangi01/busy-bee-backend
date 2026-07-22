@@ -35,6 +35,8 @@ export class AuthHelpers {
         name: payload.name.trim(),
         email,
         passwordHash: hashPassword(payload.password),
+        backgroundExecutionGranted: payload.backgroundExecutionGranted ?? null,
+        notificationsGranted: payload.notificationsGranted ?? null,
       },
     });
 
