@@ -2,6 +2,13 @@ import httpStatus from "http-status";
 import { FocusSession, SessionEndReason } from "@prisma/client";
 import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
+import { startOfUtcDay } from "@/utils/helpers/date";
+import { isUserPro } from "@/utils/helpers/entitlement";
+import {
+  FREE_TIER_DAILY_SESSION_CAP,
+  FREE_TIER_SESSION_DURATION_CAP_SECONDS,
+} from "@/utils/constants/entitlement";
+import { FocusSessionErrorCode } from "@/routes/focus-sessions/utils/enums";
 import {
   IEndFocusSessionPayload,
   IFocusSessionDto,
@@ -20,6 +27,20 @@ export class FocusSessionsHelpers {
       throw new AppError("Mission not found", httpStatus.NOT_FOUND);
     }
 
+    const isPro = await isUserPro(userId);
+    if (!isPro) {
+      const todaysSessionCount = await prismaClient.focusSession.count({
+        where: { mission: { userId }, startedAt: { gte: startOfUtcDay(new Date()) } },
+      });
+      if (todaysSessionCount >= FREE_TIER_DAILY_SESSION_CAP) {
+        throw new AppError(
+          "Daily session limit reached",
+          httpStatus.FORBIDDEN,
+          FocusSessionErrorCode.SESSION_CAP_REACHED,
+        );
+      }
+    }
+
     const session = await prismaClient.focusSession.create({
       data: { missionId: mission.id },
     });
@@ -32,6 +53,19 @@ export class FocusSessionsHelpers {
     focusSessionId: string,
   ): Promise<IFocusSessionDto> => {
     const session = await FocusSessionsHelpers.findOwnedSession(userId, focusSessionId);
+
+    const isPro = await isUserPro(userId);
+    if (!isPro) {
+      const elapsedSeconds = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
+      if (elapsedSeconds > FREE_TIER_SESSION_DURATION_CAP_SECONDS) {
+        throw new AppError(
+          "Free session time limit reached",
+          httpStatus.FORBIDDEN,
+          FocusSessionErrorCode.SESSION_TIME_LIMIT_REACHED,
+        );
+      }
+    }
+
     const updated = await prismaClient.focusSession.update({
       where: { id: session.id },
       data: { blockedAttemptCount: { increment: 1 } },
@@ -51,11 +85,18 @@ export class FocusSessionsHelpers {
 
     const session = await FocusSessionsHelpers.findOwnedSession(userId, focusSessionId);
     const endedAt = new Date();
-    const elapsedSeconds = Math.round((endedAt.getTime() - session.startedAt.getTime()) / 1000);
+    const actualElapsedSeconds = Math.round((endedAt.getTime() - session.startedAt.getTime()) / 1000);
+
+    // Free-tier duration cap is enforced here, not just trusted from the
+    // client — a modified client could otherwise self-report unlimited time.
+    const isPro = await isUserPro(userId);
+    const isOverCap = !isPro && actualElapsedSeconds > FREE_TIER_SESSION_DURATION_CAP_SECONDS;
+    const elapsedSeconds = isOverCap ? FREE_TIER_SESSION_DURATION_CAP_SECONDS : actualElapsedSeconds;
+    const sessionEndReason = isOverCap ? SessionEndReason.TIME_LIMIT_REACHED : payload.sessionEndReason;
 
     const updated = await prismaClient.focusSession.update({
       where: { id: session.id },
-      data: { endedAt, elapsedSeconds, sessionEndReason: payload.sessionEndReason },
+      data: { endedAt, elapsedSeconds, sessionEndReason },
     });
 
     return FocusSessionsHelpers.toDto(updated);

@@ -16,10 +16,11 @@ export const SuccessResponse = <T>(
 export const ErrorResponse = (
   res: Response,
   statusCode: number,
-  payload: { message: string },
+  payload: { message: string; code?: string },
 ): Response => {
   return res.status(statusCode).json({
     success: false,
     message: payload.message,
+    code: payload.code,
   });
 };

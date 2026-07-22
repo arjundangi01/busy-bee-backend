@@ -10,7 +10,7 @@ export const globalErrorHandler = (
   _next: NextFunction,
 ): Response => {
   if (error instanceof AppError) {
-    return ErrorResponse(res, error.statusCode, { message: error.message });
+    return ErrorResponse(res, error.statusCode, { message: error.message, code: error.code });
   }
 
   return ErrorResponse(res, httpStatus.INTERNAL_SERVER_ERROR, {
