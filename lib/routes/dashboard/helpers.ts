@@ -4,6 +4,7 @@ import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
 import { computeBestFocusWindow, formatHour } from "@/utils/helpers/focusWindow";
 import { dayKey } from "@/utils/helpers/date";
+import { calculateCurrentStreakDays } from "@/utils/helpers/streak";
 import { ASSUMED_MINUTES_PER_BLOCKED_ATTEMPT } from "@/utils/constants/analytics";
 import { IDashboardDto, ITrendDay } from "@/routes/dashboard/utils/types";
 
@@ -29,7 +30,7 @@ export class DashboardHelpers {
       .filter((date): date is Date => date !== null);
 
     const backlogCount = allTasks.filter((task) => task.status === TaskStatus.PENDING).length;
-    const streakDays = DashboardHelpers.calculateStreakDays(completedMissionDates);
+    const streakDays = calculateCurrentStreakDays(new Set(completedMissionDates.map(dayKey)));
     const trend = DashboardHelpers.buildTrend(completedMissionDates);
 
     const sevenDaysAgo = new Date();
@@ -63,27 +64,6 @@ export class DashboardHelpers {
       patternSignal: isColdStart ? null : DashboardHelpers.buildPatternSignal(allSessions),
       isColdStart,
     };
-  };
-
-  private static calculateStreakDays = (completedMissionDates: Date[]): number => {
-    if (completedMissionDates.length === 0) {
-      return 0;
-    }
-
-    const dayKeys = new Set(completedMissionDates.map(dayKey));
-    let streak = 0;
-    const cursor = new Date();
-
-    for (;;) {
-      const key = dayKey(cursor);
-      if (!dayKeys.has(key)) {
-        break;
-      }
-      streak += 1;
-      cursor.setDate(cursor.getDate() - 1);
-    }
-
-    return streak;
   };
 
   private static buildTrend = (completedMissionDates: Date[]): ITrendDay[] => {
