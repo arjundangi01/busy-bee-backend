@@ -34,6 +34,23 @@ enum SubscriptionProvider {
   ANDROID
 }
 
+enum PlanTier {
+  FREE
+  PRO
+}
+
+// DD-003 Free/Pro limits, config-driven rather than hardcoded — one row per
+// tier. A null cap means unlimited (Pro's row ships with both null). Seeded
+// by this model's migration; change the row directly to change business
+// limits without a code deploy.
+model PlanLimits {
+  id                        String   @id @default(cuid())
+  tier                      PlanTier @unique
+  dailySessionCap           Int?
+  sessionDurationCapSeconds Int?
+  updatedAt                 DateTime @updatedAt
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
