@@ -10,8 +10,18 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required — copy .env.example to .env and set it");
 }
 
+if (!process.env.SESSION_TOKEN_SECRET) {
+  throw new Error("SESSION_TOKEN_SECRET is required — copy .env.example to .env and set it");
+}
+
+if (!process.env.ANTHROPIC_API_KEY) {
+  throw new Error("ANTHROPIC_API_KEY is required — copy .env.example to .env and set it");
+}
+
 export const env = {
   port: parsePort(process.env.PORT),
   databaseUrl: process.env.DATABASE_URL,
+  sessionTokenSecret: process.env.SESSION_TOKEN_SECRET,
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   mode: (process.env.NODE_ENV as ENV) ?? ENV.DEVELOPMENT,
 };

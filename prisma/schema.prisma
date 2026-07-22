@@ -5,3 +5,74 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum MissionStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum TaskStatus {
+  PENDING
+  DONE
+}
+
+enum SessionEndReason {
+  MISSION_COMPLETED
+  EARLY_EXIT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // 3.1 Onboarding/First-Run permission state — null means not yet asked,
+  // true/false is the granted/denied-or-skipped outcome. Drives the degraded-
+  // capability re-ask surface on 5.1 Settings/Account (not built in this delivery).
+  backgroundExecutionGranted Boolean?
+  notificationsGranted       Boolean?
+
+  missions Mission[]
+}
+
+model Mission {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id])
+  title            String
+  // Nullable: AI-generated missions (1.2) deliberately avoid fixed time-size
+  // framing per the Product Brief's positioning — no estimate is fabricated.
+  estimatedMinutes Int?
+  status           MissionStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now())
+  completedAt      DateTime?
+
+  tasks         MissionTask[]
+  focusSessions FocusSession[]
+}
+
+model MissionTask {
+  id               String     @id @default(cuid())
+  missionId        String
+  mission          Mission    @relation(fields: [missionId], references: [id])
+  title            String
+  order            Int
+  // Nullable for the same reason as Mission.estimatedMinutes above.
+  estimatedMinutes Int?
+  status           TaskStatus @default(PENDING)
+  completedAt      DateTime?
+}
+
+model FocusSession {
+  id                  String            @id @default(cuid())
+  missionId           String
+  mission             Mission           @relation(fields: [missionId], references: [id])
+  startedAt           DateTime          @default(now())
+  endedAt             DateTime?
+  elapsedSeconds      Int?
+  sessionEndReason    SessionEndReason?
+  blockedAttemptCount Int               @default(0)
+}

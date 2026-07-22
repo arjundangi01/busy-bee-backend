@@ -8,9 +8,15 @@
     "dev": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register lib/index.ts",
     "build": "tsc && tsc-alias",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate dev --name init && npx prisma generate",
+    "db:reset": "npx prisma migrate reset",
+    "db:test": "tsx scripts/test-database.ts",
+    "show:db": "npx prisma studio"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.5",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "cors": "^2.8.5",
