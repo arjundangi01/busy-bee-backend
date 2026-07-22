@@ -37,6 +37,7 @@ See [`code-practice-be.md`](../code-practice-be.md) at the project root for the 
 - `POST /api/missions/plan` — free-text task → Claude API (`claude-opus-4-8`) → next-smallest-step preview (not persisted until `POST /missions`)
 - `POST /api/missions`, `GET /api/missions`, `GET /api/missions/:missionId`, `POST /api/missions/:missionId/tasks/:taskId/complete` — mission/task CRUD
 - `GET /api/dashboard` — streak, backlog, time-reclaimed, 7-day trend, today summary, pattern signal
+- `GET /api/progress` — all-time best streak, 30-day calendar (with a no-history state for pre-account days), 8-week rolling time-reclaimed/focus-duration buckets, best focus window, toughest weekday, distraction attempts this week
 - `POST /api/focus-sessions`, `POST /api/focus-sessions/:id/blocked-attempt`, `POST /api/focus-sessions/:id/end` — session start/end, elapsed time, block-attempt count (UI-only stub, no real OS-level enforcement — see `design-artifacts/E-Development/DD-001-implementation-plan.md` Open Item 1)
 - All routes above except `/auth/sign-up` and `/auth/sign-in` require `Authorization: Bearer <session-token>` (`requireAuth` middleware)
 
