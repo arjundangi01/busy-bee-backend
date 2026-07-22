@@ -2,6 +2,7 @@ import httpStatus from "http-status";
 import { TaskStatus } from "@prisma/client";
 import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
+import { computeBestFocusWindow, formatHour } from "@/utils/helpers/focusWindow";
 import { IDashboardDto, ITrendDay } from "@/routes/dashboard/utils/types";
 
 const TREND_DAYS = 7;
@@ -110,29 +111,11 @@ export class DashboardHelpers {
   private static buildPatternSignal = (
     sessions: { startedAt: Date; elapsedSeconds: number | null }[],
   ): string | null => {
-    if (sessions.length === 0) {
+    const window = computeBestFocusWindow(sessions);
+    if (!window) {
       return null;
     }
 
-    const minutesByHour = new Map<number, number>();
-    for (const session of sessions) {
-      const hour = session.startedAt.getHours();
-      minutesByHour.set(hour, (minutesByHour.get(hour) ?? 0) + (session.elapsedSeconds ?? 0) / 60);
-    }
-
-    const [bestHour] = [...minutesByHour.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null];
-    if (bestHour === null) {
-      return null;
-    }
-
-    const rangeStart = DashboardHelpers.formatHour(bestHour);
-    const rangeEnd = DashboardHelpers.formatHour((bestHour + 1) % 24);
-    return `Your best focus window is ${rangeStart}-${rangeEnd}`;
-  };
-
-  private static formatHour = (hour: number): string => {
-    const period = hour >= 12 ? "pm" : "am";
-    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-    return `${displayHour}${period}`;
+    return `Your best focus window is ${formatHour(window.startHour)}-${formatHour(window.endHour)}`;
   };
 }
