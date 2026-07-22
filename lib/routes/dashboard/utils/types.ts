@@ -1,0 +1,23 @@
+export type ITrendDayStatus = "hit" | "miss" | "today";
+
+export type ITrendDay = {
+  date: string;
+  status: ITrendDayStatus;
+};
+
+export type ITodayCard = {
+  sessionsCompleted: number;
+  minutesFocused: number;
+  tasksWaiting: number;
+};
+
+export type IDashboardDto = {
+  name: string;
+  streakDays: number;
+  backlogCount: number;
+  timeReclaimedMinutes: number;
+  trend: ITrendDay[];
+  today: ITodayCard;
+  patternSignal: string | null;
+  isColdStart: boolean;
+};
