@@ -3,16 +3,12 @@ import { TaskStatus } from "@prisma/client";
 import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
 import { computeBestFocusWindow, formatHour } from "@/utils/helpers/focusWindow";
+import { dayKey } from "@/utils/helpers/date";
+import { ASSUMED_MINUTES_PER_BLOCKED_ATTEMPT } from "@/utils/constants/analytics";
 import { IDashboardDto, ITrendDay } from "@/routes/dashboard/utils/types";
 
 const TREND_DAYS = 7;
 const COLD_START_HISTORY_DAYS = 7;
-// No per-blocked-app tracking exists yet (the blocking mechanism itself is a
-// later delivery) — approximate reclaimed time from blocked-attempt counts
-// using a fixed per-attempt estimate rather than fabricating precision we don't have.
-const ASSUMED_MINUTES_PER_BLOCKED_ATTEMPT = 3;
-
-const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
 
 export class DashboardHelpers {
   public static get = async (userId: string): Promise<IDashboardDto> => {
