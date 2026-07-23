@@ -48,4 +48,13 @@ export class AuthRoutes {
       next(error);
     }
   }
+
+  public static async updatePreferences(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await AuthHelpers.updatePreferences(req.user!.id, req.body);
+      return SuccessResponse(res, httpStatus.OK, { message: "Saved", data });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

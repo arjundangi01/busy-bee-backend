@@ -25,9 +25,18 @@ export type IAuthUser = {
   id: string;
   name: string;
   email: string;
+  backgroundExecutionGranted: boolean | null;
+  notificationsGranted: boolean | null;
+  pushNotificationsEnabled: boolean;
+  eodNudgeEnabled: boolean;
 };
 
 export type IAuthResult = {
   user: IAuthUser;
   token: string;
+};
+
+export type IUpdatePreferencesPayload = {
+  pushNotificationsEnabled?: boolean;
+  eodNudgeEnabled?: boolean;
 };

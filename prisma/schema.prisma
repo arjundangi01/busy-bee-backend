@@ -72,10 +72,17 @@ model User {
   updatedAt    DateTime     @updatedAt
 
   // 3.1 Onboarding/First-Run permission state — null means not yet asked,
-  // true/false is the granted/denied-or-skipped outcome. Drives the degraded-
-  // capability re-ask surface on 5.1 Settings/Account (not built in this delivery).
+  // true/false is the granted/denied-or-skipped outcome. Drives the
+  // self-service Permissions section on 5.1 Settings/Account.
   backgroundExecutionGranted Boolean?
   notificationsGranted       Boolean?
+
+  // 5.1 Settings/Account — in-app notification preferences, a different
+  // layer from the OS-level grants above. Not wired to a real push-sending
+  // system yet (no server-side push scheduling exists — same open item as
+  // DD-002's 2.1 entry-point deferral); these just record the user's choice.
+  pushNotificationsEnabled Boolean @default(true)
+  eodNudgeEnabled          Boolean @default(true)
 
   missions     Mission[]
   subscription Subscription?

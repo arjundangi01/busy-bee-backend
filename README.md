@@ -33,7 +33,7 @@ See [`code-practice-be.md`](../code-practice-be.md) at the project root for the 
 
 ## Routes
 
-- `POST /api/auth/sign-up`, `POST /api/auth/sign-in`, `GET /api/auth/me` — email/password auth, HMAC-signed session token (`lib/utils/helpers/sessionToken.ts`, `lib/middleware/auth.ts`)
+- `POST /api/auth/sign-up`, `POST /api/auth/sign-in`, `GET /api/auth/me`, `PATCH /api/auth/me` — email/password auth, HMAC-signed session token (`lib/utils/helpers/sessionToken.ts`, `lib/middleware/auth.ts`). `PATCH /me` updates in-app notification preferences (`pushNotificationsEnabled`/`eodNudgeEnabled` — 5.1 Settings/Account; a different layer from the OS-level permission grants below, and not wired to a real push-sending system yet)
 - `POST /api/auth/google` — Google sign-in/sign-up via Firebase: verifies the client's Firebase ID token (`firebase-admin`, `lib/utils/helpers/firebaseAdmin.ts`), links to an existing account by verified email or creates a new one (`passwordHash: null`, `authProvider: GOOGLE`), issues the same session token as email auth. Returns `501` until `FIREBASE_SERVICE_ACCOUNT_JSON` is set. Apple sign-in is still not wired up.
 - `POST /api/missions/plan` — free-text task → Claude API (`claude-opus-4-8`) → next-smallest-step preview (not persisted until `POST /missions`)
 - `POST /api/missions`, `GET /api/missions`, `GET /api/missions/:missionId`, `POST /api/missions/:missionId/tasks/:taskId/complete` — mission/task CRUD

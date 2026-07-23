@@ -11,5 +11,6 @@ export class AuthRouter {
     this.router.post("/sign-in", AuthRoutes.signIn);
     this.router.post("/google", AuthRoutes.google);
     this.router.get("/me", requireAuth, AuthRoutes.me);
+    this.router.patch("/me", requireAuth, AuthRoutes.updatePreferences);
   }
 }

@@ -12,6 +12,7 @@ import {
   IGoogleAuthPayload,
   ISignInPayload,
   ISignUpPayload,
+  IUpdatePreferencesPayload,
 } from "@/routes/auth/utils/types";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -137,6 +138,21 @@ export class AuthHelpers {
     return AuthHelpers.buildAuthResult(user);
   };
 
+  public static updatePreferences = async (
+    userId: string,
+    payload: IUpdatePreferencesPayload,
+  ): Promise<IAuthResult> => {
+    const user = await prismaClient.user.update({
+      where: { id: userId },
+      data: {
+        pushNotificationsEnabled: payload.pushNotificationsEnabled,
+        eodNudgeEnabled: payload.eodNudgeEnabled,
+      },
+    });
+
+    return AuthHelpers.buildAuthResult(user);
+  };
+
   private static validateSignUp = (payload: ISignUpPayload): void => {
     if (!isNonEmptyString(payload.name)) {
       throw new AppError("Name is required", httpStatus.BAD_REQUEST);
@@ -158,7 +174,15 @@ export class AuthHelpers {
   private static buildAuthResult = (user: IAuthUser): IAuthResult => {
     const token = createSessionToken({ userId: user.id, issuedAt: Date.now() });
     return {
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        backgroundExecutionGranted: user.backgroundExecutionGranted,
+        notificationsGranted: user.notificationsGranted,
+        pushNotificationsEnabled: user.pushNotificationsEnabled,
+        eodNudgeEnabled: user.eodNudgeEnabled,
+      },
       token,
     };
   };
