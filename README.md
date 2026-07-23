@@ -10,7 +10,7 @@ npm install
 npx prisma migrate dev   # applies the committed migrations to your database
 ```
 
-`npm install` also generates the Prisma client (via `@prisma/client`'s own postinstall step) — no manual `prisma generate` needed. The app boots without one, but throws a clear startup error if `DATABASE_URL` or `SESSION_TOKEN_SECRET` is missing. `ANTHROPIC_API_KEY` is only required for the AI mission-breakdown call (`POST /missions/plan`) — everything else runs without it. `REVENUECAT_WEBHOOK_SECRET` is optional for the same reason — no real RevenueCat account/products exist yet; `POST /webhooks/revenuecat` rejects every request until it's set for real.
+`npm install` also generates the Prisma client (via `@prisma/client`'s own postinstall step) — no manual `prisma generate` needed. The app boots without one, but throws a clear startup error if `DATABASE_URL` or `SESSION_TOKEN_SECRET` is missing. `ANTHROPIC_API_KEY` is only required for the AI mission-breakdown call (`POST /missions/plan`) — everything else runs without it. `REVENUECAT_WEBHOOK_SECRET` and `FIREBASE_SERVICE_ACCOUNT_JSON` are optional for the same reason — no real RevenueCat/Firebase project exists yet; `POST /webhooks/revenuecat` and `POST /auth/google` reject/501 every request until each is set for real.
 
 ## Run
 
@@ -33,7 +33,8 @@ See [`code-practice-be.md`](../code-practice-be.md) at the project root for the 
 
 ## Routes
 
-- `POST /api/auth/sign-up`, `POST /api/auth/sign-in`, `GET /api/auth/me` — email/password auth, HMAC-signed session token (`lib/utils/helpers/sessionToken.ts`, `lib/middleware/auth.ts`). Social login (Apple/Google) is not wired up yet.
+- `POST /api/auth/sign-up`, `POST /api/auth/sign-in`, `GET /api/auth/me` — email/password auth, HMAC-signed session token (`lib/utils/helpers/sessionToken.ts`, `lib/middleware/auth.ts`)
+- `POST /api/auth/google` — Google sign-in/sign-up via Firebase: verifies the client's Firebase ID token (`firebase-admin`, `lib/utils/helpers/firebaseAdmin.ts`), links to an existing account by verified email or creates a new one (`passwordHash: null`, `authProvider: GOOGLE`), issues the same session token as email auth. Returns `501` until `FIREBASE_SERVICE_ACCOUNT_JSON` is set. Apple sign-in is still not wired up.
 - `POST /api/missions/plan` — free-text task → Claude API (`claude-opus-4-8`) → next-smallest-step preview (not persisted until `POST /missions`)
 - `POST /api/missions`, `GET /api/missions`, `GET /api/missions/:missionId`, `POST /api/missions/:missionId/tasks/:taskId/complete` — mission/task CRUD
 - `GET /api/dashboard` — streak, backlog, time-reclaimed, 7-day trend, today summary, pattern signal

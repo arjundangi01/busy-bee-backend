@@ -13,6 +13,14 @@ export type ISignInPayload = {
   password: string;
 };
 
+export type IGoogleAuthPayload = {
+  idToken: string;
+  // Only used the first time this Firebase account creates a new User —
+  // matches ISignUpPayload's own permission fields.
+  backgroundExecutionGranted?: boolean;
+  notificationsGranted?: boolean;
+};
+
 export type IAuthUser = {
   id: string;
   name: string;

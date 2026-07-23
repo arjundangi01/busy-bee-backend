@@ -39,6 +39,11 @@ enum PlanTier {
   PRO
 }
 
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
 // DD-003 Free/Pro limits, config-driven rather than hardcoded — one row per
 // tier. A null cap means unlimited (Pro's row ships with both null). Seeded
 // by this model's migration; change the row directly to change business
@@ -55,9 +60,16 @@ model User {
   id           String   @id @default(cuid())
   name         String
   email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // Nullable: Google-only accounts (authProvider GOOGLE) have no password —
+  // real gap flagged since DD-001's 3.2 Sign Up/Sign In build.
+  passwordHash String?
+  authProvider AuthProvider @default(EMAIL)
+  // Firebase's stable per-user uid — set once on first Google sign-in,
+  // looked up on every subsequent one. Unique so one Firebase account can't
+  // attach to two Users.
+  firebaseUid  String?      @unique
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   // 3.1 Onboarding/First-Run permission state — null means not yet asked,
   // true/false is the granted/denied-or-skipped outcome. Drives the degraded-

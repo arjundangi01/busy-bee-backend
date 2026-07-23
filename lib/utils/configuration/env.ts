@@ -27,4 +27,8 @@ export const env = {
   // DD-003: optional, not required at boot — no RevenueCat account/products
   // exist yet. The webhook route rejects requests until this is set for real.
   revenueCatWebhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET ?? null,
+  // Google social login: optional, not required at boot — paste the full
+  // Firebase service-account JSON as a single-line string. POST /auth/google
+  // returns a clear error until this is set for real.
+  firebaseServiceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? null,
 };

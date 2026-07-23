@@ -28,6 +28,18 @@ export class AuthRoutes {
     }
   }
 
+  public static async google(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await AuthHelpers.signInWithGoogle(req.body);
+      return SuccessResponse(res, httpStatus.OK, {
+        message: "Signed in with Google",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public static async me(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await AuthHelpers.getMe(req.user!.id);
