@@ -160,6 +160,10 @@ export class AuthHelpers {
         ...(payload.age !== undefined && { age: payload.age }),
         ...(payload.bio !== undefined && { bio: payload.bio.trim() || null }),
         ...(payload.selectedWorkTypeId !== undefined && { selectedWorkTypeId: payload.selectedWorkTypeId }),
+        // One-way flag — only ever moves false -> true through this
+        // endpoint, an explicit `false` is silently ignored rather than
+        // letting a client reset it and reintroduce the nudge.
+        ...(payload.accessibilityPrimingShown === true && { accessibilityPrimingShown: true }),
       },
     });
 
@@ -210,6 +214,7 @@ export class AuthHelpers {
         bio: user.bio,
         blocklistDefaultsSeeded: user.blocklistDefaultsSeeded,
         selectedWorkTypeId: user.selectedWorkTypeId,
+        accessibilityPrimingShown: user.accessibilityPrimingShown,
       },
       token,
     };

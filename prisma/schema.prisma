@@ -102,6 +102,12 @@ model User {
   // run, so removed defaults never silently reappear on relaunch.
   blocklistDefaultsSeeded Boolean @default(false)
 
+  // Bee's Hive/Focus Session blocking enforcement — the one-time just-in-time
+  // permission nudge (design-artifacts/evolution/specs/06-permission-priming.md).
+  // True once the nudge has been shown, regardless of skip/grant outcome —
+  // after that it's reachable via 5.1 Settings only, never shown again.
+  accessibilityPrimingShown Boolean @default(false)
+
   // Bee's Hive — the work type used for new Focus Sessions until the user
   // changes it there. Null until their first visit to the Hive (or their
   // first session, whichever comes first — see FocusSessionsHelpers.start's

@@ -35,6 +35,7 @@ export type IAuthUser = {
   bio: string | null;
   blocklistDefaultsSeeded: boolean;
   selectedWorkTypeId: string | null;
+  accessibilityPrimingShown: boolean;
 };
 
 export type IAuthResult = {
@@ -56,4 +57,7 @@ export type IUpdatePreferencesPayload = {
   // before being persisted, same as every other field here is validated
   // before its own update.
   selectedWorkTypeId?: string;
+  // See design-artifacts/evolution/specs/06-permission-priming.md — set once,
+  // true, the first time the nudge screen is shown; never unset.
+  accessibilityPrimingShown?: boolean;
 };
