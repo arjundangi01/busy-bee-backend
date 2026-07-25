@@ -202,6 +202,7 @@ export class AuthHelpers {
         phone: user.phone,
         age: user.age,
         bio: user.bio,
+        blocklistDefaultsSeeded: user.blocklistDefaultsSeeded,
       },
       token,
     };

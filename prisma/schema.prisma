@@ -92,8 +92,14 @@ model User {
   age        Int?
   bio        String?
 
+  // 5.1 Settings/Account Blocked Apps — tracks whether the one-time
+  // known-defaults seed (Instagram/YouTube/X, client-determined) has already
+  // run, so removed defaults never silently reappear on relaunch.
+  blocklistDefaultsSeeded Boolean @default(false)
+
   missions     Mission[]
   subscription Subscription?
+  blockedApps  BlockedApp[]
 }
 
 // 4.1 Paywall/Upgrade — absence of a row (or a non-ACTIVE status) means Free tier.
@@ -139,6 +145,20 @@ model MissionTask {
   estimatedMinutes Int?
   status           TaskStatus @default(PENDING)
   completedAt      DateTime?
+}
+
+// 5.1 Settings/Account Blocked Apps — a user's personal blocklist of
+// installed Android apps (see mobile/src/module/settings). Enforcement is
+// out of scope; this only makes the blocklist data exist and be manageable.
+model BlockedApp {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  packageName String
+  appName     String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, packageName])
 }
 
 model FocusSession {

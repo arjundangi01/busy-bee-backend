@@ -7,6 +7,7 @@ import { FocusSessionsRouter } from "@/routes/focus-sessions";
 import { ProgressRouter } from "@/routes/progress";
 import { SubscriptionRouter } from "@/routes/subscription";
 import { WebhooksRouter } from "@/routes/webhooks";
+import { BlocklistRouter } from "@/routes/blocklist";
 
 export class ApiRouter {
   public router: Router;
@@ -21,5 +22,6 @@ export class ApiRouter {
     this.router.use("/progress", new ProgressRouter().router);
     this.router.use("/subscription", new SubscriptionRouter().router);
     this.router.use("/webhooks", new WebhooksRouter().router);
+    this.router.use("/blocklist", new BlocklistRouter().router);
   }
 }

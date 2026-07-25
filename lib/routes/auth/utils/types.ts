@@ -33,6 +33,7 @@ export type IAuthUser = {
   phone: string | null;
   age: number | null;
   bio: string | null;
+  blocklistDefaultsSeeded: boolean;
 };
 
 export type IAuthResult = {
