@@ -28,7 +28,19 @@ export abstract class OpenAICompatibleProvider implements AIProvider {
     });
   }
 
+  // Free-tier models routed through OpenRouter occasionally return a
+  // malformed/non-schema response on an otherwise-healthy request (observed
+  // live, not just theoretical) — one silent retry absorbs that transient
+  // flakiness before surfacing an error to the user.
   public breakdown = async (taskText: string): Promise<IMissionPlan> => {
+    try {
+      return await this.attemptBreakdown(taskText);
+    } catch (error) {
+      return this.attemptBreakdown(taskText);
+    }
+  };
+
+  private attemptBreakdown = async (taskText: string): Promise<IMissionPlan> => {
     let response;
     try {
       response = await this.client.chat.completions.create({

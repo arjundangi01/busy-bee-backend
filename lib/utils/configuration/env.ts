@@ -50,8 +50,14 @@ if (!process.env[requiredAIApiKeyEnvVar]) {
 // default id fails verbatim against the Anthropic/OpenAI SDKs), so each
 // provider needs its own default. `AI_MODEL`, when set, overrides whichever
 // provider is currently active.
+// google/gemma-4-26b-a4b-it:free was picked over the previous default
+// (openai/gpt-oss-20b:free) after live testing on 2026-07-25: the old
+// default ignored strict json_schema entirely and returned prose; this one
+// returns schema-correct JSON on ~2/3 calls (the remaining ~1/3 fail with a
+// malformed-encoding transport error, absorbed by openAICompatibleProvider's
+// single retry).
 const AI_PROVIDER_DEFAULT_MODEL: Record<AIProviderName, string> = {
-  [AIProviderName.OPENROUTER]: "openai/gpt-oss-20b:free",
+  [AIProviderName.OPENROUTER]: "google/gemma-4-26b-a4b-it:free",
   [AIProviderName.ANTHROPIC]: "claude-opus-4-8",
   [AIProviderName.OPENAI]: "gpt-4o-mini",
 };
