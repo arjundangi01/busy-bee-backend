@@ -8,6 +8,8 @@ export type IFocusSessionDto = {
   elapsedSeconds: number | null;
   sessionEndReason: SessionEndReason | null;
   blockedAttemptCount: number;
+  workTypeId: string | null;
+  workUnitsCompleted: number;
 };
 
 export type IStartFocusSessionPayload = {

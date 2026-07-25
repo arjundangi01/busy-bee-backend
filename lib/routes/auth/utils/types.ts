@@ -34,6 +34,7 @@ export type IAuthUser = {
   age: number | null;
   bio: string | null;
   blocklistDefaultsSeeded: boolean;
+  selectedWorkTypeId: string | null;
 };
 
 export type IAuthResult = {
@@ -50,4 +51,9 @@ export type IUpdatePreferencesPayload = {
   phone?: string;
   age?: number;
   bio?: string;
+  // Bee's Hive — see design-artifacts/evolution/specs/05-bees-hive.md.
+  // Validated (exists, active, Pro-gated) by WorkTypeHelpers.assertSelectable
+  // before being persisted, same as every other field here is validated
+  // before its own update.
+  selectedWorkTypeId?: string;
 };

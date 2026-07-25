@@ -8,6 +8,7 @@ import { ProgressRouter } from "@/routes/progress";
 import { SubscriptionRouter } from "@/routes/subscription";
 import { WebhooksRouter } from "@/routes/webhooks";
 import { BlocklistRouter } from "@/routes/blocklist";
+import { WorkTypesRouter } from "@/routes/work-types";
 
 export class ApiRouter {
   public router: Router;
@@ -23,5 +24,6 @@ export class ApiRouter {
     this.router.use("/subscription", new SubscriptionRouter().router);
     this.router.use("/webhooks", new WebhooksRouter().router);
     this.router.use("/blocklist", new BlocklistRouter().router);
+    this.router.use("/work-types", new WorkTypesRouter().router);
   }
 }

@@ -44,6 +44,11 @@ enum AuthProvider {
   GOOGLE
 }
 
+enum WorkTypeTier {
+  FREE
+  PRO
+}
+
 // DD-003 Free/Pro limits, config-driven rather than hardcoded — one row per
 // tier. A null cap means unlimited (Pro's row ships with both null). Seeded
 // by this model's migration; change the row directly to change business
@@ -57,9 +62,9 @@ model PlanLimits {
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String       @id @default(cuid())
   name         String
-  email        String   @unique
+  email        String       @unique
   // Nullable: Google-only accounts (authProvider GOOGLE) have no password —
   // real gap flagged since DD-001's 3.2 Sign Up/Sign In build.
   passwordHash String?
@@ -96,6 +101,13 @@ model User {
   // known-defaults seed (Instagram/YouTube/X, client-determined) has already
   // run, so removed defaults never silently reappear on relaunch.
   blocklistDefaultsSeeded Boolean @default(false)
+
+  // Bee's Hive — the work type used for new Focus Sessions until the user
+  // changes it there. Null until their first visit to the Hive (or their
+  // first session, whichever comes first — see FocusSessionsHelpers.start's
+  // fallback-to-first-free-type logic).
+  selectedWorkTypeId String?
+  selectedWorkType   WorkType? @relation(fields: [selectedWorkTypeId], references: [id])
 
   missions     Mission[]
   subscription Subscription?
@@ -170,4 +182,33 @@ model FocusSession {
   elapsedSeconds      Int?
   sessionEndReason    SessionEndReason?
   blockedAttemptCount Int               @default(0)
+
+  // Bee's Hive — set at session start from the user's selectedWorkTypeId.
+  // workUnitsCompleted is computed server-side at session end from real
+  // elapsed time (never trusted from the client — same principle as the
+  // Free-tier duration cap enforcement below it), capped at the work type's
+  // totalUnits. Nullable: a session can exist with no work type assigned if
+  // no WorkType rows exist yet (defensive, shouldn't happen post-seed).
+  workTypeId         String?
+  workType           WorkType? @relation(fields: [workTypeId], references: [id])
+  workUnitsCompleted Int       @default(0)
+}
+
+// Bee's Hive work-type registry (design-artifacts/evolution/specs/03-companion-work-types.md).
+// Deliberately data, not code — new work types (especially Pro ones) are meant
+// to be addable via a DB row, never an app release. Seeded with the two Free
+// launch types by this model's own migration.
+model WorkType {
+  id         String       @id @default(cuid())
+  // Stable identifier the client can hardcode against for known launch types
+  // without depending on generated cuids — e.g. picking a specific icon set.
+  key        String       @unique
+  label      String
+  tier       WorkTypeTier
+  totalUnits Int
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+
+  focusSessions   FocusSession[]
+  selectedByUsers User[]
 }

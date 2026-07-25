@@ -6,6 +6,7 @@ import { isNonEmptyString } from "@/utils/helpers/common";
 import { hashPassword, verifyPassword } from "@/utils/helpers/password";
 import { createSessionToken } from "@/utils/helpers/sessionToken";
 import { verifyGoogleIdToken } from "@/utils/helpers/firebaseAdmin";
+import { WorkTypeHelpers } from "@/routes/work-types/helpers";
 import {
   IAuthResult,
   IAuthUser,
@@ -144,6 +145,10 @@ export class AuthHelpers {
   ): Promise<IAuthResult> => {
     AuthHelpers.validateProfileUpdate(payload);
 
+    if (payload.selectedWorkTypeId !== undefined) {
+      await WorkTypeHelpers.assertSelectable(userId, payload.selectedWorkTypeId);
+    }
+
     const user = await prismaClient.user.update({
       where: { id: userId },
       data: {
@@ -154,6 +159,7 @@ export class AuthHelpers {
         ...(payload.phone !== undefined && { phone: payload.phone.trim() || null }),
         ...(payload.age !== undefined && { age: payload.age }),
         ...(payload.bio !== undefined && { bio: payload.bio.trim() || null }),
+        ...(payload.selectedWorkTypeId !== undefined && { selectedWorkTypeId: payload.selectedWorkTypeId }),
       },
     });
 
@@ -203,6 +209,7 @@ export class AuthHelpers {
         age: user.age,
         bio: user.bio,
         blocklistDefaultsSeeded: user.blocklistDefaultsSeeded,
+        selectedWorkTypeId: user.selectedWorkTypeId,
       },
       token,
     };

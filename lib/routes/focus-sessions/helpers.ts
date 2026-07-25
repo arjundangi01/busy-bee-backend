@@ -1,5 +1,5 @@
 import httpStatus from "http-status";
-import { FocusSession, SessionEndReason } from "@prisma/client";
+import { FocusSession, SessionEndReason, WorkTypeTier } from "@prisma/client";
 import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
 import { startOfUtcDay } from "@/utils/helpers/date";
@@ -10,6 +10,11 @@ import {
   IFocusSessionDto,
   IStartFocusSessionPayload,
 } from "@/routes/focus-sessions/utils/types";
+
+// design-artifacts/evolution/specs/03-companion-work-types.md's pacing
+// decision: one work-progress unit per 5 minutes of real, server-computed
+// elapsed time.
+const WORK_UNIT_SECONDS = 300;
 
 export class FocusSessionsHelpers {
   public static start = async (
@@ -37,11 +42,31 @@ export class FocusSessionsHelpers {
       }
     }
 
+    const workTypeId = await FocusSessionsHelpers.resolveWorkTypeId(userId);
+
     const session = await prismaClient.focusSession.create({
-      data: { missionId: mission.id },
+      data: { missionId: mission.id, workTypeId },
     });
 
     return FocusSessionsHelpers.toDto(session);
+  };
+
+  // Uses the user's Bee's Hive selection if they've made one; falls back to
+  // the first active Free work type for a user who's never visited the Hive
+  // (including every pre-existing user as of this feature shipping) so a
+  // session is never left with no work type at all.
+  private static resolveWorkTypeId = async (userId: string): Promise<string | null> => {
+    const user = await prismaClient.user.findUnique({
+      where: { id: userId },
+      select: { selectedWorkTypeId: true },
+    });
+    if (user?.selectedWorkTypeId) return user.selectedWorkTypeId;
+
+    const defaultWorkType = await prismaClient.workType.findFirst({
+      where: { isActive: true, tier: WorkTypeTier.FREE },
+      orderBy: { createdAt: "asc" },
+    });
+    return defaultWorkType?.id ?? null;
   };
 
   public static recordBlockedAttempt = async (
@@ -95,12 +120,30 @@ export class FocusSessionsHelpers {
       sessionEndReason = SessionEndReason.TIME_LIMIT_REACHED;
     }
 
+    const workUnitsCompleted = await FocusSessionsHelpers.computeWorkUnitsCompleted(
+      session.workTypeId,
+      elapsedSeconds,
+    );
+
     const updated = await prismaClient.focusSession.update({
       where: { id: session.id },
-      data: { endedAt, elapsedSeconds, sessionEndReason },
+      data: { endedAt, elapsedSeconds, sessionEndReason, workUnitsCompleted },
     });
 
     return FocusSessionsHelpers.toDto(updated);
+  };
+
+  // Computed from the already cap-clamped elapsedSeconds (not the raw,
+  // pre-clamp actualElapsedSeconds) — a Free user who hits the duration cap
+  // shouldn't bank work credit for time beyond what was actually enforced.
+  private static computeWorkUnitsCompleted = async (
+    workTypeId: string | null,
+    elapsedSeconds: number,
+  ): Promise<number> => {
+    if (!workTypeId) return 0;
+    const workType = await prismaClient.workType.findUnique({ where: { id: workTypeId } });
+    if (!workType) return 0;
+    return Math.min(Math.floor(elapsedSeconds / WORK_UNIT_SECONDS), workType.totalUnits);
   };
 
   private static findOwnedSession = async (
@@ -124,5 +167,7 @@ export class FocusSessionsHelpers {
     elapsedSeconds: session.elapsedSeconds,
     sessionEndReason: session.sessionEndReason,
     blockedAttemptCount: session.blockedAttemptCount,
+    workTypeId: session.workTypeId,
+    workUnitsCompleted: session.workUnitsCompleted,
   });
 }

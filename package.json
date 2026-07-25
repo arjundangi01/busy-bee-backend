@@ -12,6 +12,7 @@
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev --name init && npx prisma generate",
     "db:reset": "npx prisma migrate reset",
+    "seed:work-types": "ts-node --transpile-only -r tsconfig-paths/register scripts/seed-work-types.ts",
     "db:test": "tsx scripts/test-database.ts",
     "show:db": "npx prisma studio"
   },
