@@ -29,6 +29,10 @@ export type IAuthUser = {
   notificationsGranted: boolean | null;
   pushNotificationsEnabled: boolean;
   eodNudgeEnabled: boolean;
+  occupation: string | null;
+  phone: string | null;
+  age: number | null;
+  bio: string | null;
 };
 
 export type IAuthResult = {
@@ -39,4 +43,10 @@ export type IAuthResult = {
 export type IUpdatePreferencesPayload = {
   pushNotificationsEnabled?: boolean;
   eodNudgeEnabled?: boolean;
+  // DD-004 My Account — self-service profile edits, same endpoint.
+  name?: string;
+  occupation?: string;
+  phone?: string;
+  age?: number;
+  bio?: string;
 };

@@ -84,6 +84,14 @@ model User {
   pushNotificationsEnabled Boolean @default(true)
   eodNudgeEnabled          Boolean @default(true)
 
+  // DD-004 My Account — self-service profile details, editable from Settings.
+  // All nullable: none are collected at sign-up, only filled in if the user
+  // chooses to.
+  occupation String?
+  phone      String?
+  age        Int?
+  bio        String?
+
   missions     Mission[]
   subscription Subscription?
 }

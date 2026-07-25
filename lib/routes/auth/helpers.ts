@@ -142,15 +142,31 @@ export class AuthHelpers {
     userId: string,
     payload: IUpdatePreferencesPayload,
   ): Promise<IAuthResult> => {
+    AuthHelpers.validateProfileUpdate(payload);
+
     const user = await prismaClient.user.update({
       where: { id: userId },
       data: {
         pushNotificationsEnabled: payload.pushNotificationsEnabled,
         eodNudgeEnabled: payload.eodNudgeEnabled,
+        ...(payload.name !== undefined && { name: payload.name.trim() }),
+        ...(payload.occupation !== undefined && { occupation: payload.occupation.trim() || null }),
+        ...(payload.phone !== undefined && { phone: payload.phone.trim() || null }),
+        ...(payload.age !== undefined && { age: payload.age }),
+        ...(payload.bio !== undefined && { bio: payload.bio.trim() || null }),
       },
     });
 
     return AuthHelpers.buildAuthResult(user);
+  };
+
+  private static validateProfileUpdate = (payload: IUpdatePreferencesPayload): void => {
+    if (payload.name !== undefined && !isNonEmptyString(payload.name)) {
+      throw new AppError("Name can't be empty", httpStatus.BAD_REQUEST);
+    }
+    if (payload.age !== undefined && (!Number.isInteger(payload.age) || payload.age < 13 || payload.age > 120)) {
+      throw new AppError("Age must be a whole number between 13 and 120", httpStatus.BAD_REQUEST);
+    }
   };
 
   private static validateSignUp = (payload: ISignUpPayload): void => {
@@ -182,6 +198,10 @@ export class AuthHelpers {
         notificationsGranted: user.notificationsGranted,
         pushNotificationsEnabled: user.pushNotificationsEnabled,
         eodNudgeEnabled: user.eodNudgeEnabled,
+        occupation: user.occupation,
+        phone: user.phone,
+        age: user.age,
+        bio: user.bio,
       },
       token,
     };
