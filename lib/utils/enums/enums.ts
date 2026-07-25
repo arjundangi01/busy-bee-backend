@@ -3,3 +3,9 @@ export enum ENV {
   STAGING = "staging",
   PRODUCTION = "production",
 }
+
+export enum AIProviderName {
+  OPENROUTER = "openrouter",
+  ANTHROPIC = "anthropic",
+  OPENAI = "openai",
+}

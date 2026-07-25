@@ -5,12 +5,14 @@ AI Mission Control API — Node.js, TypeScript, Express, Prisma 7 (PostgreSQL).
 ## Setup
 
 ```bash
-cp .env.example .env   # fill in DATABASE_URL, SESSION_TOKEN_SECRET, ANTHROPIC_API_KEY
+cp .env.example .env   # fill in DATABASE_URL, SESSION_TOKEN_SECRET, and the selected AI provider's key
 npm install
 npx prisma migrate dev   # applies the committed migrations to your database
 ```
 
-`npm install` also generates the Prisma client (via `@prisma/client`'s own postinstall step) — no manual `prisma generate` needed. The app boots without one, but throws a clear startup error if `DATABASE_URL` or `SESSION_TOKEN_SECRET` is missing. `ANTHROPIC_API_KEY` is only required for the AI mission-breakdown call (`POST /missions/plan`) — everything else runs without it. `REVENUECAT_WEBHOOK_SECRET` and `FIREBASE_SERVICE_ACCOUNT_JSON` are optional for the same reason — no real RevenueCat/Firebase project exists yet; `POST /webhooks/revenuecat` and `POST /auth/google` reject/501 every request until each is set for real.
+`npm install` also generates the Prisma client (via `@prisma/client`'s own postinstall step) — no manual `prisma generate` needed. The app boots without one, but throws a clear startup error if `DATABASE_URL` or `SESSION_TOKEN_SECRET` is missing.
+
+AI provider (`POST /missions/plan`) is configurable via `AI_PROVIDER` (`openrouter` | `anthropic` | `openai`, default `openrouter`) and `AI_MODEL` (optional — overrides the model for whichever provider is active; if unset, each provider falls back to its own default: `openrouter` → `openai/gpt-oss-20b:free`, `anthropic` → `claude-opus-4-8`, `openai` → `gpt-4o-mini`). Only the API key matching the selected provider is required at boot — `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY` — the app throws a clear startup error naming the missing var if it's unset; the other two keys are optional. `REVENUECAT_WEBHOOK_SECRET` and `FIREBASE_SERVICE_ACCOUNT_JSON` are optional for a different reason — no real RevenueCat/Firebase project exists yet; `POST /webhooks/revenuecat` and `POST /auth/google` reject/501 every request until each is set for real.
 
 ## Run
 
@@ -35,7 +37,7 @@ See [`code-practice-be.md`](../code-practice-be.md) at the project root for the 
 
 - `POST /api/auth/sign-up`, `POST /api/auth/sign-in`, `GET /api/auth/me`, `PATCH /api/auth/me` — email/password auth, HMAC-signed session token (`lib/utils/helpers/sessionToken.ts`, `lib/middleware/auth.ts`). `PATCH /me` updates in-app notification preferences (`pushNotificationsEnabled`/`eodNudgeEnabled` — 5.1 Settings/Account; a different layer from the OS-level permission grants below, and not wired to a real push-sending system yet)
 - `POST /api/auth/google` — Google sign-in/sign-up via Firebase: verifies the client's Firebase ID token (`firebase-admin`, `lib/utils/helpers/firebaseAdmin.ts`), links to an existing account by verified email or creates a new one (`passwordHash: null`, `authProvider: GOOGLE`), issues the same session token as email auth. Returns `501` until `FIREBASE_SERVICE_ACCOUNT_JSON` is set. Apple sign-in is still not wired up.
-- `POST /api/missions/plan` — free-text task → Claude API (`claude-opus-4-8`) → next-smallest-step preview (not persisted until `POST /missions`)
+- `POST /api/missions/plan` — free-text task → configured AI provider (`AI_PROVIDER`, default OpenRouter, each provider has its own default `AI_MODEL`; see `lib/services/ai/providerFactory.ts`) → next-smallest-step preview (not persisted until `POST /missions`)
 - `POST /api/missions`, `GET /api/missions`, `GET /api/missions/:missionId`, `POST /api/missions/:missionId/tasks/:taskId/complete` — mission/task CRUD
 - `GET /api/dashboard` — streak, backlog, time-reclaimed, 7-day trend, today summary, pattern signal
 - `GET /api/progress` — all-time best streak, 30-day calendar (with a no-history state for pre-account days), 8-week rolling time-reclaimed/focus-duration buckets, best focus window, toughest weekday, distraction attempts this week

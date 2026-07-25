@@ -24,6 +24,7 @@
     "express": "^4.21.0",
     "firebase-admin": "^14.2.0",
     "http-status": "^1.7.4",
+    "openai": "^6.49.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {

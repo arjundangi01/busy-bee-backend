@@ -36,6 +36,7 @@ export class AuthRoutes {
         data,
       });
     } catch (error) {
+      console.log(error);
       next(error);
     }
   }
@@ -49,7 +50,11 @@ export class AuthRoutes {
     }
   }
 
-  public static async updatePreferences(req: Request, res: Response, next: NextFunction) {
+  public static async updatePreferences(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     try {
       const data = await AuthHelpers.updatePreferences(req.user!.id, req.body);
       return SuccessResponse(res, httpStatus.OK, { message: "Saved", data });
