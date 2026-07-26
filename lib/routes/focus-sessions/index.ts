@@ -9,6 +9,7 @@ export class FocusSessionsRouter {
     this.router = Router();
     this.router.use(requireAuth);
     this.router.post("/", FocusSessionsRoutes.start);
+    this.router.get("/active", FocusSessionsRoutes.getActive);
     this.router.post("/:focusSessionId/blocked-attempt", FocusSessionsRoutes.recordBlockedAttempt);
     this.router.post("/:focusSessionId/end", FocusSessionsRoutes.end);
   }

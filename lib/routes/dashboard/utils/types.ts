@@ -11,6 +11,12 @@ export type ITodayCard = {
   tasksWaiting: number;
 };
 
+export type IActiveSession = {
+  focusSessionId: string;
+  missionId: string;
+  startedAt: string;
+};
+
 export type IDashboardDto = {
   name: string;
   streakDays: number;
@@ -20,4 +26,5 @@ export type IDashboardDto = {
   today: ITodayCard;
   patternSignal: string | null;
   isColdStart: boolean;
+  activeSession: IActiveSession | null;
 };

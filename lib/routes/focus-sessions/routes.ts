@@ -13,6 +13,15 @@ export class FocusSessionsRoutes {
     }
   }
 
+  public static async getActive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await FocusSessionsHelpers.getActive(req.user!.id);
+      return SuccessResponse(res, httpStatus.OK, { message: "success", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public static async recordBlockedAttempt(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await FocusSessionsHelpers.recordBlockedAttempt(req.user!.id, req.params.focusSessionId);

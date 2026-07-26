@@ -21,6 +21,17 @@ export class FocusSessionsHelpers {
     userId: string,
     payload: IStartFocusSessionPayload,
   ): Promise<IFocusSessionDto> => {
+    const existingActive = await prismaClient.focusSession.findFirst({
+      where: { endedAt: null, mission: { userId } },
+    });
+    if (existingActive) {
+      throw new AppError(
+        "A focus session is already active",
+        httpStatus.CONFLICT,
+        FocusSessionErrorCode.SESSION_ALREADY_ACTIVE,
+      );
+    }
+
     const mission = await prismaClient.mission.findFirst({
       where: { id: payload.missionId, userId },
     });
@@ -49,6 +60,14 @@ export class FocusSessionsHelpers {
     });
 
     return FocusSessionsHelpers.toDto(session);
+  };
+
+  public static getActive = async (userId: string): Promise<IFocusSessionDto | null> => {
+    const session = await prismaClient.focusSession.findFirst({
+      where: { endedAt: null, mission: { userId } },
+      orderBy: { startedAt: "desc" },
+    });
+    return session ? FocusSessionsHelpers.toDto(session) : null;
   };
 
   // Uses the user's Bee's Hive selection if they've made one; falls back to

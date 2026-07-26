@@ -50,6 +50,8 @@ export class DashboardHelpers {
     const historyDayCount = new Set(allSessions.map((session) => dayKey(session.startedAt))).size;
     const isColdStart = historyDayCount < COLD_START_HISTORY_DAYS;
 
+    const activeSession = allSessions.find((session) => session.endedAt === null) ?? null;
+
     return {
       name: user.name,
       streakDays,
@@ -63,6 +65,13 @@ export class DashboardHelpers {
       },
       patternSignal: isColdStart ? null : DashboardHelpers.buildPatternSignal(allSessions),
       isColdStart,
+      activeSession: activeSession
+        ? {
+            focusSessionId: activeSession.id,
+            missionId: activeSession.missionId,
+            startedAt: activeSession.startedAt.toISOString(),
+          }
+        : null,
     };
   };
 
