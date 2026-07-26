@@ -7,6 +7,11 @@ export type IStreakCalendarCell = {
   status: IStreakCalendarCellStatus;
 };
 
+export type ITopDistraction = {
+  appName: string;
+  count: number;
+};
+
 export type IProgressDto = {
   currentStreakDays: number;
   bestStreakDays: number;
@@ -19,6 +24,15 @@ export type IProgressDto = {
   currentAvgFocusMinutes: number | null;
   bestFocusWindow: IFocusWindow | null;
   toughestDay: string | null;
-  distractionAttemptsThisWeek: number;
+  // Replaces the old bare distractionAttemptsThisWeek count — names the
+  // actual top offending app, from real per-app data (BlockedAttemptEvent).
+  topDistraction: ITopDistraction | null;
+  longestFocusMinutes: number | null;
+  sessionsEndedEarlyThisWeek: number;
+  tasksPastTheirTime: number;
+  timeToStartMinutes: number | null;
+  bounceBackRatePercent: number | null;
+  missionCompletionRatePercent: number | null;
+  stepCompletionRatePercent: number | null;
   isColdStart: boolean;
 };

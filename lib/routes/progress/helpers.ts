@@ -1,18 +1,38 @@
 import httpStatus from "http-status";
+import { MissionStatus, SessionEndReason, TaskStatus } from "@prisma/client";
 import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
 import { dayKey } from "@/utils/helpers/date";
 import { calculateBestStreakDays, calculateCurrentStreakDays } from "@/utils/helpers/streak";
 import { computeBestFocusWindow } from "@/utils/helpers/focusWindow";
 import { ASSUMED_MINUTES_PER_BLOCKED_ATTEMPT } from "@/utils/constants/analytics";
-import { IProgressDto, IStreakCalendarCell } from "@/routes/progress/utils/types";
+import { IProgressDto, IStreakCalendarCell, ITopDistraction } from "@/routes/progress/utils/types";
 
 const STREAK_CALENDAR_DAYS = 30;
 const WEEK_BUCKET_COUNT = 8;
 const COLD_START_ACCOUNT_AGE_DAYS = 30;
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-type ISession = { startedAt: Date; endedAt: Date | null; elapsedSeconds: number | null; blockedAttemptCount: number };
+type ISession = {
+  id: string;
+  missionId: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  elapsedSeconds: number | null;
+  blockedAttemptCount: number;
+  sessionEndReason: SessionEndReason | null;
+};
+
+type ITask = { id: string; status: TaskStatus; startedAt: Date | null; estimatedMinutes: number | null };
+
+type IMissionWithRelations = {
+  id: string;
+  status: MissionStatus;
+  createdAt: Date;
+  completedAt: Date | null;
+  focusSessions: ISession[];
+  tasks: ITask[];
+};
 
 export class ProgressHelpers {
   public static get = async (userId: string): Promise<IProgressDto> => {
@@ -21,9 +41,9 @@ export class ProgressHelpers {
       throw new AppError("User not found", httpStatus.NOT_FOUND);
     }
 
-    const missions = await prismaClient.mission.findMany({
+    const missions: IMissionWithRelations[] = await prismaClient.mission.findMany({
       where: { userId },
-      include: { focusSessions: true },
+      include: { focusSessions: { orderBy: { startedAt: "asc" } }, tasks: true },
     });
 
     const allSessions = missions.flatMap((mission) => mission.focusSessions);
@@ -41,9 +61,10 @@ export class ProgressHelpers {
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const distractionAttemptsThisWeek = allSessions
-      .filter((session) => session.startedAt >= sevenDaysAgo)
-      .reduce((sum, session) => sum + session.blockedAttemptCount, 0);
+
+    const sessionsEndedEarlyThisWeek = allSessions.filter(
+      (session) => session.startedAt >= sevenDaysAgo && session.sessionEndReason === SessionEndReason.EARLY_EXIT,
+    ).length;
 
     return {
       currentStreakDays: calculateCurrentStreakDays(hitDayKeys),
@@ -55,7 +76,14 @@ export class ProgressHelpers {
       currentAvgFocusMinutes,
       bestFocusWindow: computeBestFocusWindow(allSessions),
       toughestDay: ProgressHelpers.findToughestDay(hitDayKeys, accountCreatedAt),
-      distractionAttemptsThisWeek,
+      topDistraction: await ProgressHelpers.computeTopDistraction(userId, sevenDaysAgo),
+      longestFocusMinutes: ProgressHelpers.computeLongestFocusMinutes(allSessions),
+      sessionsEndedEarlyThisWeek,
+      tasksPastTheirTime: ProgressHelpers.computeTasksPastTheirTime(missions),
+      timeToStartMinutes: ProgressHelpers.computeTimeToStartMinutes(missions),
+      bounceBackRatePercent: ProgressHelpers.computeBounceBackRatePercent(allSessions),
+      missionCompletionRatePercent: ProgressHelpers.computeMissionCompletionRatePercent(missions),
+      stepCompletionRatePercent: ProgressHelpers.computeStepCompletionRatePercent(missions),
       isColdStart: accountAgeDays < COLD_START_ACCOUNT_AGE_DAYS,
     };
   };
@@ -160,5 +188,133 @@ export class ProgressHelpers {
     });
 
     return toughestIndex === null ? null : WEEKDAY_NAMES[toughestIndex];
+  };
+
+  // "This week" matches the same rolling 7-day window the old bare
+  // distraction-attempts count used — top offending app, not just a count.
+  // Resolved against the user's own BlockedApp list so the row shows a real
+  // app name, not a raw package id; falls back to the package id itself in
+  // the edge case where the app was later removed from the blocklist.
+  private static computeTopDistraction = async (
+    userId: string,
+    sevenDaysAgo: Date,
+  ): Promise<ITopDistraction | null> => {
+    const events = await prismaClient.blockedAttemptEvent.findMany({
+      where: { occurredAt: { gte: sevenDaysAgo }, focusSession: { mission: { userId } } },
+    });
+    if (events.length === 0) {
+      return null;
+    }
+
+    const countByPackage = new Map<string, number>();
+    events.forEach((event) => {
+      countByPackage.set(event.packageName, (countByPackage.get(event.packageName) ?? 0) + 1);
+    });
+
+    let topPackageName: string | null = null;
+    let topCount = 0;
+    countByPackage.forEach((count, packageName) => {
+      if (count > topCount) {
+        topCount = count;
+        topPackageName = packageName;
+      }
+    });
+    if (!topPackageName) {
+      return null;
+    }
+
+    const blockedApp = await prismaClient.blockedApp.findUnique({
+      where: { userId_packageName: { userId, packageName: topPackageName } },
+    });
+
+    return { appName: blockedApp?.appName ?? topPackageName, count: topCount };
+  };
+
+  private static computeLongestFocusMinutes = (sessions: ISession[]): number | null => {
+    const elapsedValues = sessions
+      .map((session) => session.elapsedSeconds)
+      .filter((value): value is number => value !== null);
+    if (elapsedValues.length === 0) {
+      return null;
+    }
+    return Math.round(Math.max(...elapsedValues) / 60);
+  };
+
+  // A task counts as "past its time" only once it has a real startedAt (set
+  // when it became the mission's active task) and an estimatedMinutes
+  // budget — a task that hasn't started yet, or has no time estimate, can't
+  // be measured against a budget it doesn't have.
+  private static computeTasksPastTheirTime = (missions: IMissionWithRelations[]): number => {
+    const now = Date.now();
+    return missions.reduce((total, mission) => {
+      const overdueCount = mission.tasks.filter((task) => {
+        if (task.status === TaskStatus.DONE || task.startedAt === null || task.estimatedMinutes === null) {
+          return false;
+        }
+        const elapsedMinutes = (now - task.startedAt.getTime()) / (60 * 1000);
+        return elapsedMinutes > task.estimatedMinutes;
+      }).length;
+      return total + overdueCount;
+    }, 0);
+  };
+
+  // Avg delay between a mission being created and the user actually
+  // starting work on it (first tied FocusSession), across every mission
+  // that's ever had one — null (not zero) if no mission has started yet.
+  private static computeTimeToStartMinutes = (missions: IMissionWithRelations[]): number | null => {
+    const delaysMinutes = missions
+      .filter((mission) => mission.focusSessions.length > 0)
+      .map((mission) => (mission.focusSessions[0].startedAt.getTime() - mission.createdAt.getTime()) / (60 * 1000));
+
+    if (delaysMinutes.length === 0) {
+      return null;
+    }
+    return Math.round(delaysMinutes.reduce((sum, minutes) => sum + minutes, 0) / delaysMinutes.length);
+  };
+
+  // % of EARLY_EXIT sessions followed by a new session (any mission) the
+  // same calendar day — the "Fresh Start Effect" signal from the Follow-
+  // Through card's research grounding. Null (not 0%) with no EARLY_EXIT
+  // sessions at all, since a rate needs a real denominator.
+  private static computeBounceBackRatePercent = (sessions: ISession[]): number | null => {
+    const earlyExitSessions = sessions.filter((session) => session.sessionEndReason === SessionEndReason.EARLY_EXIT);
+    if (earlyExitSessions.length === 0) {
+      return null;
+    }
+
+    const bouncedBackCount = earlyExitSessions.filter((earlyExitSession) => {
+      const referenceTime = earlyExitSession.endedAt ?? earlyExitSession.startedAt;
+      return sessions.some(
+        (candidate) =>
+          candidate.id !== earlyExitSession.id &&
+          candidate.startedAt > referenceTime &&
+          dayKey(candidate.startedAt) === dayKey(referenceTime),
+      );
+    }).length;
+
+    return Math.round((bouncedBackCount / earlyExitSessions.length) * 100);
+  };
+
+  private static computeMissionCompletionRatePercent = (missions: IMissionWithRelations[]): number | null => {
+    if (missions.length === 0) {
+      return null;
+    }
+    const completedCount = missions.filter((mission) => mission.status === MissionStatus.COMPLETED).length;
+    return Math.round((completedCount / missions.length) * 100);
+  };
+
+  // Scoped to missions the user has actually started a session for —
+  // excludes never-started backlog, which would otherwise drag this rate
+  // down with tasks nobody has begun working on yet.
+  private static computeStepCompletionRatePercent = (missions: IMissionWithRelations[]): number | null => {
+    const startedMissionsTasks = missions
+      .filter((mission) => mission.focusSessions.length > 0)
+      .flatMap((mission) => mission.tasks);
+
+    if (startedMissionsTasks.length === 0) {
+      return null;
+    }
+    const doneCount = startedMissionsTasks.filter((task) => task.status === TaskStatus.DONE).length;
+    return Math.round((doneCount / startedMissionsTasks.length) * 100);
   };
 }

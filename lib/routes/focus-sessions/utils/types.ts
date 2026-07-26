@@ -19,3 +19,10 @@ export type IStartFocusSessionPayload = {
 export type IEndFocusSessionPayload = {
   sessionEndReason: SessionEndReason;
 };
+
+export type IRecordBlockedAttemptPayload = {
+  // Nullable: older/off-Android clients call this endpoint with no body at
+  // all (the native module this comes from is Android-only) — the attempt
+  // count still increments, it just can't be attributed to a specific app.
+  packageName: string | null;
+};

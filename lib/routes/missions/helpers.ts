@@ -37,7 +37,14 @@ export class MissionsHelpers {
         userId,
         title: payload.taskText.trim(),
         tasks: {
-          create: stepTitles.map((title, index) => ({ title, order: index })),
+          // The first task (order 0) is the mission's active/next task from
+          // the moment it's created — see MissionTask.startedAt's doc
+          // comment in schema.prisma.
+          create: stepTitles.map((title, index) => ({
+            title,
+            order: index,
+            startedAt: index === 0 ? new Date() : null,
+          })),
         },
       },
       include: { tasks: { orderBy: { order: "asc" } } },
@@ -80,6 +87,17 @@ export class MissionsHelpers {
     }
 
     const refreshedMission = await MissionsHelpers.findOwnedMission(userId, missionId);
+
+    // The task that just became this mission's new active/next task starts
+    // its own clock now, same as the first task did at mission creation.
+    const newNextTask = refreshedMission.tasks.find((item) => item.status !== TaskStatus.DONE) ?? null;
+    if (newNextTask && newNextTask.startedAt === null) {
+      await prismaClient.missionTask.update({
+        where: { id: newNextTask.id },
+        data: { startedAt: new Date() },
+      });
+    }
+
     const allTasksDone = refreshedMission.tasks.every((item) => item.status === TaskStatus.DONE);
 
     if (allTasksDone && refreshedMission.status !== MissionStatus.COMPLETED) {

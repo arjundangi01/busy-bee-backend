@@ -24,7 +24,11 @@ export class FocusSessionsRoutes {
 
   public static async recordBlockedAttempt(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await FocusSessionsHelpers.recordBlockedAttempt(req.user!.id, req.params.focusSessionId);
+      const data = await FocusSessionsHelpers.recordBlockedAttempt(
+        req.user!.id,
+        req.params.focusSessionId,
+        req.body ?? {},
+      );
       return SuccessResponse(res, httpStatus.OK, { message: "success", data });
     } catch (error) {
       next(error);

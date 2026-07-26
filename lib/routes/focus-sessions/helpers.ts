@@ -4,10 +4,12 @@ import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
 import { startOfUtcDay } from "@/utils/helpers/date";
 import { getPlanLimitsForUser } from "@/utils/helpers/entitlement";
+import { isNonEmptyString } from "@/utils/helpers/common";
 import { FocusSessionErrorCode } from "@/routes/focus-sessions/utils/enums";
 import {
   IEndFocusSessionPayload,
   IFocusSessionDto,
+  IRecordBlockedAttemptPayload,
   IStartFocusSessionPayload,
 } from "@/routes/focus-sessions/utils/types";
 
@@ -91,6 +93,7 @@ export class FocusSessionsHelpers {
   public static recordBlockedAttempt = async (
     userId: string,
     focusSessionId: string,
+    payload: IRecordBlockedAttemptPayload,
   ): Promise<IFocusSessionDto> => {
     const session = await FocusSessionsHelpers.findOwnedSession(userId, focusSessionId);
 
@@ -106,9 +109,17 @@ export class FocusSessionsHelpers {
       }
     }
 
-    const updated = await prismaClient.focusSession.update({
-      where: { id: session.id },
-      data: { blockedAttemptCount: { increment: 1 } },
+    const updated = await prismaClient.$transaction(async (tx) => {
+      if (isNonEmptyString(payload.packageName)) {
+        await tx.blockedAttemptEvent.create({
+          data: { focusSessionId: session.id, packageName: payload.packageName.trim() },
+        });
+      }
+
+      return tx.focusSession.update({
+        where: { id: session.id },
+        data: { blockedAttemptCount: { increment: 1 } },
+      });
     });
 
     return FocusSessionsHelpers.toDto(updated);
