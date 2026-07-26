@@ -14,6 +14,7 @@
     "db:reset": "npx prisma migrate reset",
     "seed:work-types": "ts-node --transpile-only -r tsconfig-paths/register scripts/seed-work-types.ts",
     "seed:bee-skins": "ts-node --transpile-only -r tsconfig-paths/register scripts/seed-bee-skins.ts",
+    "seed:hive-themes": "ts-node --transpile-only -r tsconfig-paths/register scripts/seed-hive-themes.ts",
     "db:test": "tsx scripts/test-database.ts",
     "show:db": "npx prisma studio"
   },

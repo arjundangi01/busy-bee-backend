@@ -120,6 +120,12 @@ model User {
   selectedSkinId String?
   selectedSkin   BeeSkin? @relation(fields: [selectedSkinId], references: [id])
 
+  // Bee's Hive — environment/scene customization. Null means the default
+  // scene (WorkshopEnvironment's own built-in Golden Hour colors, no row
+  // needed) — same "null = default" convention as selectedSkinId.
+  selectedThemeId String?
+  selectedTheme   HiveTheme? @relation(fields: [selectedThemeId], references: [id])
+
   missions     Mission[]
   subscription Subscription?
   blockedApps  BlockedApp[]
@@ -240,6 +246,33 @@ model BeeSkin {
   bodyPrimary   String
   bodySecondary String
   stripe        String
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  selectedByUsers User[]
+}
+
+// Bee's Hive environment/scene customization — deliberately data, not code,
+// same registry pattern as BeeSkin/WorkType: new themes (especially Pro
+// ones) are addable via a DB row, never an app release. Reuses WorkTypeTier
+// rather than a duplicate FREE/PRO enum.
+model HiveTheme {
+  id    String       @id @default(cuid())
+  key   String       @unique
+  label String
+  tier  WorkTypeTier
+
+  // Flat hex colors consumed directly by WorkshopEnvironment's `theme`
+  // prop — no client-side derivation, same precedent as BeeSkin's own
+  // bodyPrimary/bodySecondary/stripe fields.
+  skyTop      String
+  skyBottom   String
+  wallTop     String
+  wallBottom  String
+  floorTop    String
+  floorBottom String
+  lanternGlow String
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())

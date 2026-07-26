@@ -36,6 +36,7 @@ export type IAuthUser = {
   blocklistDefaultsSeeded: boolean;
   selectedWorkTypeId: string | null;
   selectedSkinId: string | null;
+  selectedThemeId: string | null;
   accessibilityPrimingShown: boolean;
 };
 
@@ -61,6 +62,10 @@ export type IUpdatePreferencesPayload = {
   // Bee customization tab — validated (exists, active, Pro-gated) by
   // BeeSkinHelpers.assertSelectable, same pattern as selectedWorkTypeId.
   selectedSkinId?: string;
+  // Bee's Hive — environment/scene customization. Validated (exists,
+  // active, Pro-gated) by HiveThemeHelpers.assertSelectable, same pattern
+  // as selectedWorkTypeId/selectedSkinId.
+  selectedThemeId?: string;
   // See design-artifacts/evolution/specs/06-permission-priming.md — set once,
   // true, the first time the nudge screen is shown; never unset.
   accessibilityPrimingShown?: boolean;

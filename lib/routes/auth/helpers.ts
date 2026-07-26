@@ -8,6 +8,7 @@ import { createSessionToken } from "@/utils/helpers/sessionToken";
 import { verifyGoogleIdToken } from "@/utils/helpers/firebaseAdmin";
 import { WorkTypeHelpers } from "@/routes/work-types/helpers";
 import { BeeSkinHelpers } from "@/routes/bee-skins/helpers";
+import { HiveThemeHelpers } from "@/routes/hive-themes/helpers";
 import {
   IAuthResult,
   IAuthUser,
@@ -152,6 +153,9 @@ export class AuthHelpers {
     if (payload.selectedSkinId !== undefined) {
       await BeeSkinHelpers.assertSelectable(userId, payload.selectedSkinId);
     }
+    if (payload.selectedThemeId !== undefined) {
+      await HiveThemeHelpers.assertSelectable(userId, payload.selectedThemeId);
+    }
 
     const user = await prismaClient.user.update({
       where: { id: userId },
@@ -165,6 +169,7 @@ export class AuthHelpers {
         ...(payload.bio !== undefined && { bio: payload.bio.trim() || null }),
         ...(payload.selectedWorkTypeId !== undefined && { selectedWorkTypeId: payload.selectedWorkTypeId }),
         ...(payload.selectedSkinId !== undefined && { selectedSkinId: payload.selectedSkinId }),
+        ...(payload.selectedThemeId !== undefined && { selectedThemeId: payload.selectedThemeId }),
         // One-way flag — only ever moves false -> true through this
         // endpoint, an explicit `false` is silently ignored rather than
         // letting a client reset it and reintroduce the nudge.
@@ -220,6 +225,7 @@ export class AuthHelpers {
         blocklistDefaultsSeeded: user.blocklistDefaultsSeeded,
         selectedWorkTypeId: user.selectedWorkTypeId,
         selectedSkinId: user.selectedSkinId,
+        selectedThemeId: user.selectedThemeId,
         accessibilityPrimingShown: user.accessibilityPrimingShown,
       },
       token,
