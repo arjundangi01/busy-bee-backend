@@ -35,6 +35,7 @@ export type IAuthUser = {
   bio: string | null;
   blocklistDefaultsSeeded: boolean;
   selectedWorkTypeId: string | null;
+  selectedSkinId: string | null;
   accessibilityPrimingShown: boolean;
 };
 
@@ -57,6 +58,9 @@ export type IUpdatePreferencesPayload = {
   // before being persisted, same as every other field here is validated
   // before its own update.
   selectedWorkTypeId?: string;
+  // Bee customization tab — validated (exists, active, Pro-gated) by
+  // BeeSkinHelpers.assertSelectable, same pattern as selectedWorkTypeId.
+  selectedSkinId?: string;
   // See design-artifacts/evolution/specs/06-permission-priming.md — set once,
   // true, the first time the nudge screen is shown; never unset.
   accessibilityPrimingShown?: boolean;

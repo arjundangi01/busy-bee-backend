@@ -9,6 +9,7 @@ import { SubscriptionRouter } from "@/routes/subscription";
 import { WebhooksRouter } from "@/routes/webhooks";
 import { BlocklistRouter } from "@/routes/blocklist";
 import { WorkTypesRouter } from "@/routes/work-types";
+import { BeeSkinsRouter } from "@/routes/bee-skins";
 
 export class ApiRouter {
   public router: Router;
@@ -25,5 +26,6 @@ export class ApiRouter {
     this.router.use("/webhooks", new WebhooksRouter().router);
     this.router.use("/blocklist", new BlocklistRouter().router);
     this.router.use("/work-types", new WorkTypesRouter().router);
+    this.router.use("/bee-skins", new BeeSkinsRouter().router);
   }
 }

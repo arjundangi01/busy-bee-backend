@@ -115,6 +115,11 @@ model User {
   selectedWorkTypeId String?
   selectedWorkType   WorkType? @relation(fields: [selectedWorkTypeId], references: [id])
 
+  // Bee customization tab — Bee's Hive appearance picker. Null means the
+  // default skin (BeeCharacter's own built-in colors, no row needed).
+  selectedSkinId String?
+  selectedSkin   BeeSkin? @relation(fields: [selectedSkinId], references: [id])
+
   missions     Mission[]
   subscription Subscription?
   blockedApps  BlockedApp[]
@@ -216,5 +221,28 @@ model WorkType {
   createdAt  DateTime     @default(now())
 
   focusSessions   FocusSession[]
+  selectedByUsers User[]
+}
+
+// Bee customization tab — Bee's Hive appearance picker. Deliberately data,
+// not code, mirroring WorkType's own registry pattern above: new skins
+// (especially Pro ones) are addable via a DB row, never an app release.
+// Reuses WorkTypeTier for the same FREE/PRO gating concept rather than a
+// duplicate enum with an identical value set.
+model BeeSkin {
+  id    String       @id @default(cuid())
+  key   String       @unique
+  label String
+  tier  WorkTypeTier
+
+  // Flat hex colors consumed directly by BeeCharacter's BeeSkin prop — no
+  // client-side color derivation, the registry row is the full appearance.
+  bodyPrimary   String
+  bodySecondary String
+  stripe        String
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
   selectedByUsers User[]
 }
