@@ -11,6 +11,7 @@ import { BlocklistRouter } from "@/routes/blocklist";
 import { WorkTypesRouter } from "@/routes/work-types";
 import { BeeSkinsRouter } from "@/routes/bee-skins";
 import { HiveThemesRouter } from "@/routes/hive-themes";
+import { UsageStatsRouter } from "@/routes/usage-stats";
 
 export class ApiRouter {
   public router: Router;
@@ -29,5 +30,6 @@ export class ApiRouter {
     this.router.use("/work-types", new WorkTypesRouter().router);
     this.router.use("/bee-skins", new BeeSkinsRouter().router);
     this.router.use("/hive-themes", new HiveThemesRouter().router);
+    this.router.use("/usage-stats", new UsageStatsRouter().router);
   }
 }

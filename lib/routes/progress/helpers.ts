@@ -6,7 +6,13 @@ import { dayKey } from "@/utils/helpers/date";
 import { calculateBestStreakDays, calculateCurrentStreakDays } from "@/utils/helpers/streak";
 import { computeBestFocusWindow } from "@/utils/helpers/focusWindow";
 import { ASSUMED_MINUTES_PER_BLOCKED_ATTEMPT } from "@/utils/constants/analytics";
-import { IProgressDto, IStreakCalendarCell, ITopDistraction } from "@/routes/progress/utils/types";
+import {
+  IDeviceActivityDto,
+  IProgressDto,
+  IScreenTimeDto,
+  IStreakCalendarCell,
+  ITopDistraction,
+} from "@/routes/progress/utils/types";
 
 const STREAK_CALENDAR_DAYS = 30;
 const WEEK_BUCKET_COUNT = 8;
@@ -84,6 +90,8 @@ export class ProgressHelpers {
       bounceBackRatePercent: ProgressHelpers.computeBounceBackRatePercent(allSessions),
       missionCompletionRatePercent: ProgressHelpers.computeMissionCompletionRatePercent(missions),
       stepCompletionRatePercent: ProgressHelpers.computeStepCompletionRatePercent(missions),
+      screenTime: await ProgressHelpers.computeScreenTime(userId, dayKey(new Date())),
+      deviceActivity: await ProgressHelpers.computeDeviceActivity(userId, dayKey(new Date())),
       isColdStart: accountAgeDays < COLD_START_ACCOUNT_AGE_DAYS,
     };
   };
@@ -316,5 +324,107 @@ export class ProgressHelpers {
     }
     const doneCount = startedMissionsTasks.filter((task) => task.status === TaskStatus.DONE).length;
     return Math.round((doneCount / startedMissionsTasks.length) * 100);
+  };
+
+  // Past N calendar days, NOT including today — the comparison baseline a
+  // "vs your average" delta measures today against, matching the existing
+  // day-key convention (dayKey/startOfUtcDay) used throughout this file.
+  private static recentDayKeys = (daysBack: number): string[] => {
+    const keys: string[] = [];
+    for (let offset = 1; offset <= daysBack; offset += 1) {
+      const cursor = new Date();
+      cursor.setDate(cursor.getDate() - offset);
+      keys.push(dayKey(cursor));
+    }
+    return keys;
+  };
+
+  // Null means no on-device usage-stats aggregate exists for today yet (the
+  // "not enough data" state) — distinct from the OS permission not being
+  // granted, which is a purely client-side check the mobile app makes
+  // directly against the native module.
+  private static computeScreenTime = async (userId: string, todayKey: string): Promise<IScreenTimeDto> => {
+    const [appUsageToday, blockedApps] = await Promise.all([
+      prismaClient.appUsageDaily.findMany({
+        where: { userId, date: todayKey },
+        orderBy: { foregroundSeconds: "desc" },
+      }),
+      prismaClient.blockedApp.findMany({ where: { userId }, select: { packageName: true } }),
+    ]);
+
+    if (appUsageToday.length === 0) {
+      return null;
+    }
+
+    const blockedPackageNames = new Set(blockedApps.map((app) => app.packageName));
+    const apps = appUsageToday.map((row) => ({
+      packageName: row.packageName,
+      appName: row.appName,
+      foregroundSeconds: row.foregroundSeconds,
+      isBlocked: blockedPackageNames.has(row.packageName),
+    }));
+
+    return {
+      totalForegroundSeconds: apps.reduce((sum, app) => sum + app.foregroundSeconds, 0),
+      apps,
+    };
+  };
+
+  private static computeDeviceActivity = async (userId: string, todayKey: string): Promise<IDeviceActivityDto> => {
+    const today = await prismaClient.deviceActivityDaily.findUnique({
+      where: { userId_date: { userId, date: todayKey } },
+    });
+    if (!today) {
+      return null;
+    }
+
+    const priorDates = ProgressHelpers.recentDayKeys(7);
+
+    const [priorActivity, blockedApps, todayAppUsage, priorAppUsage] = await Promise.all([
+      prismaClient.deviceActivityDaily.findMany({ where: { userId, date: { in: priorDates } } }),
+      prismaClient.blockedApp.findMany({ where: { userId }, select: { packageName: true } }),
+      prismaClient.appUsageDaily.findMany({ where: { userId, date: todayKey } }),
+      prismaClient.appUsageDaily.findMany({ where: { userId, date: { in: priorDates } } }),
+    ]);
+
+    const blockedPackageNames = new Set(blockedApps.map((app) => app.packageName));
+    const distractionsSecondsFor = (rows: { packageName: string; foregroundSeconds: number }[]): number =>
+      rows
+        .filter((row) => blockedPackageNames.has(row.packageName))
+        .reduce((sum, row) => sum + row.foregroundSeconds, 0);
+
+    // Only average over prior days the usage-stats module actually ran on
+    // (has a real DeviceActivityDaily row) — a day with no row at all (e.g.
+    // before the permission was granted) isn't a real zero and would
+    // wrongly deflate the average if zero-filled.
+    const validPriorDates = new Set(priorActivity.map((row) => row.date));
+    const distractionsByPriorDate = new Map<string, number>();
+    validPriorDates.forEach((date) => distractionsByPriorDate.set(date, 0));
+    priorAppUsage.forEach((row) => {
+      if (!validPriorDates.has(row.date) || !blockedPackageNames.has(row.packageName)) return;
+      distractionsByPriorDate.set(row.date, (distractionsByPriorDate.get(row.date) ?? 0) + row.foregroundSeconds);
+    });
+
+    const avg = (values: number[]): number | null =>
+      values.length === 0 ? null : Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+
+    return {
+      pickupCount: { value: today.pickupCount, avg7d: avg(priorActivity.map((row) => row.pickupCount)) },
+      offlineSeconds: { value: today.offlineSeconds, avg7d: avg(priorActivity.map((row) => row.offlineSeconds)) },
+      distractionsSeconds: {
+        value: distractionsSecondsFor(todayAppUsage),
+        avg7d: avg(Array.from(distractionsByPriorDate.values())),
+      },
+      firstPickupAt: today.firstPickupAt?.toISOString() ?? null,
+      lastPickupAt: today.lastPickupAt?.toISOString() ?? null,
+      priorFirstPickupAts: priorActivity
+        .map((row) => row.firstPickupAt)
+        .filter((date): date is Date => date !== null)
+        .map((date) => date.toISOString()),
+      priorLastPickupAts: priorActivity
+        .map((row) => row.lastPickupAt)
+        .filter((date): date is Date => date !== null)
+        .map((date) => date.toISOString()),
+    };
   };
 }

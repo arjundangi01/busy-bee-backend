@@ -126,9 +126,11 @@ model User {
   selectedThemeId String?
   selectedTheme   HiveTheme? @relation(fields: [selectedThemeId], references: [id])
 
-  missions     Mission[]
-  subscription Subscription?
-  blockedApps  BlockedApp[]
+  missions            Mission[]
+  subscription        Subscription?
+  blockedApps         BlockedApp[]
+  appUsageDaily       AppUsageDaily[]
+  deviceActivityDaily DeviceActivityDaily[]
 }
 
 // 4.1 Paywall/Upgrade — absence of a row (or a non-ACTIVE status) means Free tier.
@@ -233,6 +235,46 @@ model BlockedAttemptEvent {
   focusSession   FocusSession @relation(fields: [focusSessionId], references: [id])
   packageName    String
   occurredAt     DateTime     @default(now())
+}
+
+// Insights/Data Dashboard Track 2 (design-artifacts/evolution/specs/
+// 11-insights-screen-time-and-device-activity.md) — daily aggregates only,
+// computed on-device from Android's UsageStatsManager and posted once per
+// day (upserted, never streamed as raw events) — less privacy-sensitive
+// than a raw event log, and this data only ever needs day-level ranking/
+// averaging, never per-event detail. `date` is a UTC day key (matches the
+// existing `dayKey` helper's convention), not a timestamp — this is a daily
+// rollup row, not an event.
+model AppUsageDaily {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  date              String
+  packageName       String
+  appName           String
+  foregroundSeconds Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, date, packageName])
+}
+
+// One row per user per day — pickups/offline-time/first-last-pickup are
+// already day-level aggregates on the device itself (see the usage-stats
+// native module), so there's no finer grain worth storing.
+model DeviceActivityDaily {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  date           String
+  pickupCount    Int
+  firstPickupAt  DateTime?
+  lastPickupAt   DateTime?
+  offlineSeconds Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([userId, date])
 }
 
 // Bee's Hive work-type registry (design-artifacts/evolution/specs/03-companion-work-types.md).
