@@ -5,17 +5,24 @@ import { AppError } from "@/utils/helpers/appError";
 import { startOfUtcDay } from "@/utils/helpers/date";
 import { getPlanLimitsForUser } from "@/utils/helpers/entitlement";
 import { isNonEmptyString } from "@/utils/helpers/common";
+import { classifySessionRoughness } from "@/utils/helpers/sessionRoughness";
 import { FocusSessionErrorCode } from "@/routes/focus-sessions/utils/enums";
 import {
   IEndFocusSessionPayload,
   IFocusSessionDto,
+  IPaginatedSessionHistory,
   IRecordBlockedAttemptPayload,
+  ISessionSummary,
   IStartFocusSessionPayload,
 } from "@/routes/focus-sessions/utils/types";
 
+const HISTORY_PAGE_SIZE = 20;
+
 // design-artifacts/evolution/specs/03-companion-work-types.md's pacing
-// decision: one work-progress unit per 5 minutes of real, server-computed
-// elapsed time.
+// decision, now scaled dynamically (see computeWorkUnitsCompleted) so the
+// hive finishes exactly at the session's effective duration cap — this
+// fixed 5-minutes-per-unit value only remains as the fallback for the rare
+// session with no effective cap at all (uncapped Pro, no chosen duration).
 const WORK_UNIT_SECONDS = 300;
 
 export class FocusSessionsHelpers {
@@ -72,6 +79,48 @@ export class FocusSessionsHelpers {
     return session ? FocusSessionsHelpers.toDto(session) : null;
   };
 
+  // design-artifacts/evolution/specs/12-post-session-history-and-roughness.md
+  // — the shared "one row per session, roughness-classified" list backing
+  // both Home/Evening Review's "today's sessions" and the History screen.
+  // Fetches every completed session (not just the requested slice) because
+  // classifySessionRoughness's bounce-back check needs the full set to
+  // correctly detect a same-day resume near a page boundary — acceptable at
+  // this app's personal-scale session volume, same tradeoff ProgressHelpers
+  // already makes fetching all missions/sessions for its own computations.
+  // In-progress sessions (endedAt = null) are excluded — not yet a
+  // real "how did it go" to classify.
+  public static listSessionSummaries = async (userId: string): Promise<ISessionSummary[]> => {
+    const sessions = await prismaClient.focusSession.findMany({
+      where: { mission: { userId }, endedAt: { not: null } },
+      include: { mission: { select: { title: true } } },
+      orderBy: { startedAt: "desc" },
+    });
+
+    return sessions.map((session) => ({
+      id: session.id,
+      missionId: session.missionId,
+      missionTitle: session.mission.title,
+      startedAt: session.startedAt.toISOString(),
+      endedAt: session.endedAt?.toISOString() ?? null,
+      roughness: classifySessionRoughness(session, sessions),
+    }));
+  };
+
+  public static history = async (
+    userId: string,
+    cursor: string | null,
+    limit: number,
+  ): Promise<IPaginatedSessionHistory> => {
+    const pageSize = limit > 0 ? limit : HISTORY_PAGE_SIZE;
+    const allSummaries = await FocusSessionsHelpers.listSessionSummaries(userId);
+
+    const startIndex = cursor ? allSummaries.findIndex((summary) => summary.id === cursor) + 1 : 0;
+    const items = allSummaries.slice(startIndex, startIndex + pageSize);
+    const hasMore = startIndex + pageSize < allSummaries.length;
+
+    return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
+  };
+
   // Uses the user's Bee's Hive selection if they've made one; falls back to
   // the first active Free work type for a user who's never visited the Hive
   // (including every pre-existing user as of this feature shipping) so a
@@ -97,10 +146,13 @@ export class FocusSessionsHelpers {
   ): Promise<IFocusSessionDto> => {
     const session = await FocusSessionsHelpers.findOwnedSession(userId, focusSessionId);
 
-    const limits = await getPlanLimitsForUser(userId);
-    if (limits.sessionDurationCapSeconds !== null) {
+    const capSeconds = await FocusSessionsHelpers.getEffectiveDurationCapSeconds(
+      userId,
+      session.mission.estimatedMinutes,
+    );
+    if (capSeconds !== null) {
       const elapsedSeconds = Math.round((Date.now() - session.startedAt.getTime()) / 1000);
-      if (elapsedSeconds > limits.sessionDurationCapSeconds) {
+      if (elapsedSeconds > capSeconds) {
         throw new AppError(
           "Free session time limit reached",
           httpStatus.FORBIDDEN,
@@ -138,10 +190,13 @@ export class FocusSessionsHelpers {
     const endedAt = new Date();
     const actualElapsedSeconds = Math.round((endedAt.getTime() - session.startedAt.getTime()) / 1000);
 
-    // Free-tier duration cap is enforced here, not just trusted from the
-    // client — a modified client could otherwise self-report unlimited time.
-    const limits = await getPlanLimitsForUser(userId);
-    const cap = limits.sessionDurationCapSeconds;
+    // Free-tier/mission duration cap is enforced here, not just trusted from
+    // the client — a modified client could otherwise self-report unlimited
+    // time.
+    const cap = await FocusSessionsHelpers.getEffectiveDurationCapSeconds(
+      userId,
+      session.mission.estimatedMinutes,
+    );
 
     let elapsedSeconds = actualElapsedSeconds;
     let sessionEndReason = payload.sessionEndReason;
@@ -153,6 +208,7 @@ export class FocusSessionsHelpers {
     const workUnitsCompleted = await FocusSessionsHelpers.computeWorkUnitsCompleted(
       session.workTypeId,
       elapsedSeconds,
+      cap,
     );
 
     const updated = await prismaClient.focusSession.update({
@@ -166,22 +222,46 @@ export class FocusSessionsHelpers {
   // Computed from the already cap-clamped elapsedSeconds (not the raw,
   // pre-clamp actualElapsedSeconds) — a Free user who hits the duration cap
   // shouldn't bank work credit for time beyond what was actually enforced.
+  // effectiveDurationSeconds paces the fill so the hive finishes exactly at
+  // that duration (a 20-minute mission fills in 20 minutes, a 4-hour one
+  // over 4 hours) — falls back to the fixed WORK_UNIT_SECONDS only when
+  // there's no effective duration at all (uncapped Pro, no chosen duration).
   private static computeWorkUnitsCompleted = async (
     workTypeId: string | null,
     elapsedSeconds: number,
+    effectiveDurationSeconds: number | null,
   ): Promise<number> => {
     if (!workTypeId) return 0;
     const workType = await prismaClient.workType.findUnique({ where: { id: workTypeId } });
-    if (!workType) return 0;
-    return Math.min(Math.floor(elapsedSeconds / WORK_UNIT_SECONDS), workType.totalUnits);
+    if (!workType || workType.totalUnits <= 0) return 0;
+    const unitSeconds =
+      effectiveDurationSeconds !== null ? effectiveDurationSeconds / workType.totalUnits : WORK_UNIT_SECONDS;
+    return Math.min(Math.floor(elapsedSeconds / unitSeconds), workType.totalUnits);
+  };
+
+  // The smaller of the caller's plan cap and the mission's own chosen focus
+  // duration — null only when neither is set (uncapped Pro, no chosen
+  // duration), meaning no cap applies at all.
+  private static getEffectiveDurationCapSeconds = async (
+    userId: string,
+    missionEstimatedMinutes: number | null,
+  ): Promise<number | null> => {
+    const limits = await getPlanLimitsForUser(userId);
+    const planCapSeconds = limits.sessionDurationCapSeconds;
+    const missionCapSeconds = missionEstimatedMinutes !== null ? missionEstimatedMinutes * 60 : null;
+
+    if (planCapSeconds === null) return missionCapSeconds;
+    if (missionCapSeconds === null) return planCapSeconds;
+    return Math.min(planCapSeconds, missionCapSeconds);
   };
 
   private static findOwnedSession = async (
     userId: string,
     focusSessionId: string,
-  ): Promise<FocusSession> => {
+  ): Promise<FocusSession & { mission: { estimatedMinutes: number | null } }> => {
     const session = await prismaClient.focusSession.findFirst({
       where: { id: focusSessionId, mission: { userId } },
+      include: { mission: { select: { estimatedMinutes: true } } },
     });
     if (!session) {
       throw new AppError("Focus session not found", httpStatus.NOT_FOUND);

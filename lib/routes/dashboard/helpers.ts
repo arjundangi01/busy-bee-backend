@@ -6,6 +6,8 @@ import { computeBestFocusWindow, formatHour } from "@/utils/helpers/focusWindow"
 import { dayKey } from "@/utils/helpers/date";
 import { calculateCurrentStreakDays } from "@/utils/helpers/streak";
 import { ASSUMED_MINUTES_PER_BLOCKED_ATTEMPT } from "@/utils/constants/analytics";
+import { FocusSessionsHelpers } from "@/routes/focus-sessions/helpers";
+import { ISessionSummary } from "@/routes/focus-sessions/utils/types";
 import { IDashboardDto, ITrendDay } from "@/routes/dashboard/utils/types";
 
 const TREND_DAYS = 7;
@@ -47,6 +49,15 @@ export class DashboardHelpers {
       todaySessions.reduce((sum, session) => sum + (session.elapsedSeconds ?? 0), 0) / 60,
     );
 
+    // Reuses the same roughness-classified list the History screen is built
+    // from (design-artifacts/evolution/specs/12-post-session-history-and-roughness.md)
+    // rather than re-deriving roughness here, so Home/Evening Review and
+    // History can never silently disagree on how a session is classified.
+    const todaySessionSummaries: ISessionSummary[] = (await FocusSessionsHelpers.listSessionSummaries(userId)).filter(
+      (summary) => dayKey(new Date(summary.startedAt)) === todayKey,
+    );
+    const roughSessionCount = todaySessionSummaries.filter((summary) => summary.roughness === "rough").length;
+
     const historyDayCount = new Set(allSessions.map((session) => dayKey(session.startedAt))).size;
     const isColdStart = historyDayCount < COLD_START_HISTORY_DAYS;
 
@@ -62,6 +73,8 @@ export class DashboardHelpers {
         sessionsCompleted: todaySessions.filter((session) => session.endedAt !== null).length,
         minutesFocused: minutesFocusedToday,
         tasksWaiting: backlogCount,
+        sessions: todaySessionSummaries,
+        roughSessionCount,
       },
       patternSignal: isColdStart ? null : DashboardHelpers.buildPatternSignal(allSessions),
       isColdStart,

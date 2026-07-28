@@ -1,3 +1,5 @@
+import { ISessionSummary } from "@/routes/focus-sessions/utils/types";
+
 export type ITrendDayStatus = "hit" | "miss" | "today";
 
 export type ITrendDay = {
@@ -9,6 +11,8 @@ export type ITodayCard = {
   sessionsCompleted: number;
   minutesFocused: number;
   tasksWaiting: number;
+  sessions: ISessionSummary[];
+  roughSessionCount: number;
 };
 
 export type IActiveSession = {

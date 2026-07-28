@@ -22,6 +22,17 @@ export class FocusSessionsRoutes {
     }
   }
 
+  public static async history(req: Request, res: Response, next: NextFunction) {
+    try {
+      const cursor = typeof req.query.cursor === "string" ? req.query.cursor : null;
+      const limit = Number(req.query.limit) || 0;
+      const data = await FocusSessionsHelpers.history(req.user!.id, cursor, limit);
+      return SuccessResponse(res, httpStatus.OK, { message: "success", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public static async recordBlockedAttempt(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await FocusSessionsHelpers.recordBlockedAttempt(

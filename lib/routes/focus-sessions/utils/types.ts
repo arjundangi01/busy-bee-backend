@@ -1,4 +1,19 @@
 import { SessionEndReason } from "@prisma/client";
+import { ISessionRoughness } from "@/utils/helpers/sessionRoughness";
+
+export type ISessionSummary = {
+  id: string;
+  missionId: string;
+  missionTitle: string;
+  startedAt: string;
+  endedAt: string | null;
+  roughness: ISessionRoughness;
+};
+
+export type IPaginatedSessionHistory = {
+  items: ISessionSummary[];
+  nextCursor: string | null;
+};
 
 export type IFocusSessionDto = {
   id: string;
