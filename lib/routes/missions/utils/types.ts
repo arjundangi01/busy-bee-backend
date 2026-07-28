@@ -20,7 +20,10 @@ export type IMissionDto = {
 
 export type IMissionPlanDto = {
   nextStep: string;
+  nextStepMinutes: number;
   remainingSteps: string[];
+  remainingStepsMinutes: number[];
+  estimatedMinutes: number;
 };
 
 export type IPlanMissionPayload = {
@@ -30,5 +33,21 @@ export type IPlanMissionPayload = {
 export type ICreateMissionPayload = {
   taskText: string;
   nextStep: string;
+  nextStepMinutes: number;
   remainingSteps: string[];
+  remainingStepsMinutes: number[];
+  focusMinutes: number;
+};
+
+export type IAddTaskPayload = {
+  title: string;
+  estimatedMinutes: number;
+};
+
+export type IEditTaskTitlePayload = {
+  title: string;
+};
+
+export type IReorderTasksPayload = {
+  taskIds: string[];
 };

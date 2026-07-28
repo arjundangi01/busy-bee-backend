@@ -48,4 +48,31 @@ export class MissionsRoutes {
       next(error);
     }
   }
+
+  public static async addTask(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await MissionsHelpers.addTask(req.user!.id, req.params.missionId, req.body);
+      return SuccessResponse(res, httpStatus.CREATED, { message: "Task added", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  public static async editTaskTitle(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await MissionsHelpers.editTaskTitle(req.user!.id, req.params.missionId, req.params.taskId, req.body);
+      return SuccessResponse(res, httpStatus.OK, { message: "Task updated", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  public static async reorderTasks(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await MissionsHelpers.reorderTasks(req.user!.id, req.params.missionId, req.body);
+      return SuccessResponse(res, httpStatus.OK, { message: "success", data });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

@@ -58,6 +58,14 @@ model PlanLimits {
   tier                      PlanTier @unique
   dailySessionCap           Int?
   sessionDurationCapSeconds Int?
+  // Mission task-editing limits — separate from the two caps above (which
+  // are about a single focus SESSION's cadence/length), these cap a
+  // mission's own task roadmap: how many tasks it can ever have, and the
+  // combined time budget across all of them. Only enforced when a task is
+  // *added* past either cap — the AI's initial breakdown is never blocked
+  // or told to stay under them.
+  maxTasksPerMission        Int?
+  maxMissionMinutes         Int?
   updatedAt                 DateTime @updatedAt
 }
 
@@ -155,8 +163,10 @@ model Mission {
   userId           String
   user             User          @relation(fields: [userId], references: [id])
   title            String
-  // Nullable: AI-generated missions (1.2) deliberately avoid fixed time-size
-  // framing per the Product Brief's positioning — no estimate is fabricated.
+  // The user-confirmed focus duration for this mission (seeded from the AI's
+  // estimatedMinutes, adjustable before Start — see MissionsHelpers.create),
+  // clamped server-side to the caller's plan cap. Nullable only for missions
+  // created before this field was populated.
   estimatedMinutes Int?
   status           MissionStatus @default(ACTIVE)
   createdAt        DateTime      @default(now())
@@ -172,7 +182,9 @@ model MissionTask {
   mission          Mission    @relation(fields: [missionId], references: [id])
   title            String
   order            Int
-  // Nullable for the same reason as Mission.estimatedMinutes above.
+  // Per-step time budget — not populated yet (the mission-level estimate on
+  // Mission.estimatedMinutes is the only duration set today); reserved for
+  // if/when per-step budgets become a real need.
   estimatedMinutes Int?
   status           TaskStatus @default(PENDING)
   completedAt      DateTime?

@@ -7,6 +7,8 @@ export type IPlanLimits = {
   tier: PlanTier;
   dailySessionCap: number | null;
   sessionDurationCapSeconds: number | null;
+  maxTasksPerMission: number | null;
+  maxMissionMinutes: number | null;
 };
 
 export const deriveIsPro = (subscription: Subscription | null): boolean => {
@@ -41,5 +43,7 @@ export const getPlanLimitsForUser = async (userId: string): Promise<IPlanLimits>
     tier: limits.tier,
     dailySessionCap: limits.dailySessionCap,
     sessionDurationCapSeconds: limits.sessionDurationCapSeconds,
+    maxTasksPerMission: limits.maxTasksPerMission,
+    maxMissionMinutes: limits.maxMissionMinutes,
   };
 };

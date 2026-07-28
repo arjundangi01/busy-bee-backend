@@ -17,6 +17,8 @@ export class SubscriptionHelpers {
       limits: {
         dailySessionCap: limits.dailySessionCap,
         sessionDurationCapSeconds: limits.sessionDurationCapSeconds,
+        maxTasksPerMission: limits.maxTasksPerMission,
+        maxMissionMinutes: limits.maxMissionMinutes,
       },
     };
   };
