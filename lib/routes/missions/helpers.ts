@@ -81,7 +81,7 @@ export class MissionsHelpers {
       include: { tasks: { orderBy: { order: "asc" } } },
     });
 
-    return MissionsHelpers.toDto(mission);
+    return MissionsHelpers.toDto(mission, false);
   };
 
   public static list = async (userId: string): Promise<IMissionDto[]> => {
@@ -91,12 +91,21 @@ export class MissionsHelpers {
       include: { tasks: { orderBy: { order: "asc" } } },
     });
 
-    return missions.map(MissionsHelpers.toDto);
+    // One query for every active session across the user's missions rather
+    // than one query per mission.
+    const activeSessions = await prismaClient.focusSession.findMany({
+      where: { mission: { userId }, endedAt: null },
+      select: { missionId: true },
+    });
+    const activeMissionIds = new Set(activeSessions.map((session) => session.missionId));
+
+    return missions.map((mission) => MissionsHelpers.toDto(mission, activeMissionIds.has(mission.id)));
   };
 
   public static getById = async (userId: string, missionId: string): Promise<IMissionDto> => {
     const mission = await MissionsHelpers.findOwnedMission(userId, missionId);
-    return MissionsHelpers.toDto(mission);
+    const hasActiveSession = await MissionsHelpers.hasActiveSession(missionId);
+    return MissionsHelpers.toDto(mission, hasActiveSession);
   };
 
   public static completeTask = async (
@@ -130,16 +139,17 @@ export class MissionsHelpers {
     }
 
     const allTasksDone = refreshedMission.tasks.every((item) => item.status === TaskStatus.DONE);
+    const hasActiveSession = await MissionsHelpers.hasActiveSession(missionId);
 
     if (allTasksDone && refreshedMission.status !== MissionStatus.COMPLETED) {
       await prismaClient.mission.update({
         where: { id: missionId },
         data: { status: MissionStatus.COMPLETED, completedAt: new Date() },
       });
-      return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId));
+      return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId), hasActiveSession);
     }
 
-    return MissionsHelpers.toDto(refreshedMission);
+    return MissionsHelpers.toDto(refreshedMission, hasActiveSession);
   };
 
   // Free-tier caps are only enforced here — the AI's initial breakdown is
@@ -159,6 +169,7 @@ export class MissionsHelpers {
     }
 
     const mission = await MissionsHelpers.findOwnedMission(userId, missionId);
+    await MissionsHelpers.assertNoActiveSession(missionId);
     const limits = await getPlanLimitsForUser(userId);
 
     if (limits.maxTasksPerMission !== null && mission.tasks.length >= limits.maxTasksPerMission) {
@@ -209,7 +220,9 @@ export class MissionsHelpers {
       }
     });
 
-    return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId));
+    // No active-session query needed here — assertNoActiveSession above
+    // already confirmed there isn't one.
+    return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId), false);
   };
 
   // Always free — no tier gating. Fixing up the AI's own wording is never a
@@ -225,6 +238,7 @@ export class MissionsHelpers {
     }
 
     const mission = await MissionsHelpers.findOwnedMission(userId, missionId);
+    await MissionsHelpers.assertNoActiveSession(missionId);
     const task = mission.tasks.find((item) => item.id === taskId);
     if (!task) {
       throw new AppError("Task not found", httpStatus.NOT_FOUND);
@@ -235,7 +249,9 @@ export class MissionsHelpers {
       data: { title: payload.title.trim() },
     });
 
-    return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId));
+    // No active-session query needed here — assertNoActiveSession above
+    // already confirmed there isn't one.
+    return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId), false);
   };
 
   // Always free — no tier gating, same reasoning as editTaskTitle.
@@ -245,6 +261,7 @@ export class MissionsHelpers {
     payload: IReorderTasksPayload,
   ): Promise<IMissionDto> => {
     const mission = await MissionsHelpers.findOwnedMission(userId, missionId);
+    await MissionsHelpers.assertNoActiveSession(missionId);
 
     const currentIds = new Set(mission.tasks.map((task) => task.id));
     const providedIds = payload.taskIds;
@@ -265,7 +282,21 @@ export class MissionsHelpers {
       providedIds.map((id, index) => prismaClient.missionTask.update({ where: { id }, data: { order: index } })),
     );
 
-    return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId));
+    // The reordered task that's now first-not-done becomes this mission's
+    // active task if it wasn't already one — same activation rule addTask/
+    // completeTask already apply, just triggered by a reorder instead.
+    const reorderedMission = await MissionsHelpers.findOwnedMission(userId, missionId);
+    const newNextTask = reorderedMission.tasks.find((item) => item.status !== TaskStatus.DONE) ?? null;
+    if (newNextTask && newNextTask.startedAt === null) {
+      await prismaClient.missionTask.update({
+        where: { id: newNextTask.id },
+        data: { startedAt: new Date() },
+      });
+    }
+
+    // No active-session query needed here — assertNoActiveSession above
+    // already confirmed there isn't one.
+    return MissionsHelpers.toDto(await MissionsHelpers.findOwnedMission(userId, missionId), false);
   };
 
   private static findOwnedMission = async (userId: string, missionId: string): Promise<IMissionWithTasks> => {
@@ -281,7 +312,31 @@ export class MissionsHelpers {
     return mission;
   };
 
-  private static toDto = (mission: IMissionWithTasks): IMissionDto => {
+  private static hasActiveSession = async (missionId: string): Promise<boolean> => {
+    const activeSession = await prismaClient.focusSession.findFirst({
+      where: { missionId, endedAt: null },
+      select: { id: true },
+    });
+    return activeSession !== null;
+  };
+
+  // Task editing (add/rename/reorder) is blocked while a real focus session
+  // is running for this mission — the live session's displayed "current
+  // step" is pushed into the native blocking module and would drift out of
+  // sync with the task list if it changed underneath it mid-session.
+  // completeTask is deliberately exempt — marking a task done *during* a
+  // session is the normal, expected flow, not something to block.
+  private static assertNoActiveSession = async (missionId: string): Promise<void> => {
+    if (await MissionsHelpers.hasActiveSession(missionId)) {
+      throw new AppError(
+        "Can't edit tasks while a focus session is in progress",
+        httpStatus.CONFLICT,
+        MissionErrorCode.SESSION_IN_PROGRESS,
+      );
+    }
+  };
+
+  private static toDto = (mission: IMissionWithTasks, hasActiveSession: boolean): IMissionDto => {
     const doneCount = mission.tasks.filter((task) => task.status === TaskStatus.DONE).length;
     const progressPercent =
       mission.tasks.length === 0 ? 0 : Math.round((doneCount / mission.tasks.length) * 100);
@@ -295,6 +350,7 @@ export class MissionsHelpers {
       progressPercent,
       tasks: mission.tasks,
       nextTask,
+      hasActiveSession,
     };
   };
 }

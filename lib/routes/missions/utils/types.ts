@@ -16,6 +16,11 @@ export type IMissionDto = {
   progressPercent: number;
   tasks: IMissionTaskDto[];
   nextTask: IMissionTaskDto | null;
+  // True while this mission has a real, unended FocusSession — task editing
+  // (add/rename/reorder) is blocked server-side while this is true, so the
+  // client can proactively lock the same controls instead of only failing
+  // reactively after a request.
+  hasActiveSession: boolean;
 };
 
 export type IMissionPlanDto = {
