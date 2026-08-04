@@ -11,6 +11,7 @@ export class FocusSessionsRouter {
     this.router.post("/", FocusSessionsRoutes.start);
     this.router.get("/active", FocusSessionsRoutes.getActive);
     this.router.get("/history", FocusSessionsRoutes.history);
+    this.router.get("/:focusSessionId/timeline", FocusSessionsRoutes.getTimeline);
     this.router.post("/:focusSessionId/blocked-attempt", FocusSessionsRoutes.recordBlockedAttempt);
     this.router.post("/:focusSessionId/end", FocusSessionsRoutes.end);
   }

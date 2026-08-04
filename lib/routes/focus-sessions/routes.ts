@@ -33,6 +33,15 @@ export class FocusSessionsRoutes {
     }
   }
 
+  public static async getTimeline(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await FocusSessionsHelpers.getTimeline(req.user!.id, req.params.focusSessionId);
+      return SuccessResponse(res, httpStatus.OK, { message: "success", data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public static async recordBlockedAttempt(req: Request, res: Response, next: NextFunction) {
     try {
       const data = await FocusSessionsHelpers.recordBlockedAttempt(
