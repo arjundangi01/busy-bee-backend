@@ -12,6 +12,7 @@ import { WorkTypesRouter } from "@/routes/work-types";
 import { BeeSkinsRouter } from "@/routes/bee-skins";
 import { HiveThemesRouter } from "@/routes/hive-themes";
 import { UsageStatsRouter } from "@/routes/usage-stats";
+import { AccountRouter } from "@/routes/account";
 
 export class ApiRouter {
   public router: Router;
@@ -20,6 +21,7 @@ export class ApiRouter {
     this.router = Router();
     this.router.use("/health", new HealthRouter().router);
     this.router.use("/auth", new AuthRouter().router);
+    this.router.use("/account", new AccountRouter().router);
     this.router.use("/missions", new MissionsRouter().router);
     this.router.use("/dashboard", new DashboardRouter().router);
     this.router.use("/focus-sessions", new FocusSessionsRouter().router);

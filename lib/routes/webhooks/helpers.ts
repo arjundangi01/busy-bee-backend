@@ -1,5 +1,7 @@
-import { SubscriptionProvider, SubscriptionStatus } from "@prisma/client";
+import { Prisma, SubscriptionErrorType, SubscriptionProvider, SubscriptionStatus } from "@prisma/client";
 import { prismaClient } from "@/db/db";
+import { logSubscriptionError } from "@/utils/helpers/subscriptionErrorLog";
+import { attemptSubscriptionCancellation } from "@/utils/helpers/subscriptionCancellation";
 import { IRevenueCatWebhookEvent } from "@/routes/webhooks/utils/types";
 
 const STORE_TO_PROVIDER: Record<string, SubscriptionProvider> = {
@@ -7,6 +9,12 @@ const STORE_TO_PROVIDER: Record<string, SubscriptionProvider> = {
   MAC_APP_STORE: SubscriptionProvider.IOS,
   PLAY_STORE: SubscriptionProvider.ANDROID,
 };
+
+// Still-active-billing event types — an orphaned subscription for one of
+// these is still charging someone with no account attached to it, so it's
+// worth attempting cancellation on. Other types (EXPIRATION, CANCELLATION,
+// ...) are passive state changes with nothing actively billing.
+const STILL_BILLING_EVENT_TYPES = new Set(["RENEWAL", "INITIAL_PURCHASE", "BILLING_ISSUE"]);
 
 type ISubscriptionUpsertData = {
   status: SubscriptionStatus;
@@ -21,10 +29,33 @@ export class WebhooksHelpers {
   public static handleRevenueCat = async (payload: IRevenueCatWebhookEvent): Promise<void> => {
     const { event } = payload;
 
+    const isNewEvent = await WebhooksHelpers.recordEventOnce(event.id);
+    if (!isNewEvent) {
+      await logSubscriptionError(SubscriptionErrorType.DUPLICATE_EVENT, {
+        eventId: event.id,
+        eventType: event.type,
+        appUserId: event.app_user_id,
+      });
+      return;
+    }
+
     const user = await prismaClient.user.findUnique({ where: { id: event.app_user_id } });
     if (!user) {
       // RevenueCat's app_user_id didn't match a real user (e.g. a sandbox/test
-      // event fired before Purchases.logIn() ran) — nothing to update, no error.
+      // event fired before Purchases.logIn() ran, or the account behind it
+      // was since deleted) — nothing to update locally, but worth logging.
+      await logSubscriptionError(SubscriptionErrorType.USER_NOT_FOUND, {
+        appUserId: event.app_user_id,
+        eventType: event.type,
+        eventId: event.id,
+      });
+
+      // A deleted-but-still-billing subscription outliving its account is
+      // exactly the case DeletionAudit/account deletion can't fully prevent
+      // (billing lives in RevenueCat, not our DB) — this is the safety net.
+      if (STILL_BILLING_EVENT_TYPES.has(event.type)) {
+        await attemptSubscriptionCancellation({ appUserId: event.app_user_id, eventType: event.type });
+      }
       return;
     }
 
@@ -85,5 +116,21 @@ export class WebhooksHelpers {
       create: { userId, ...data },
       update: data,
     });
+  };
+
+  // Insert-or-detect-duplicate on the unique eventId column, rather than a
+  // separate exists-check followed by an insert — that two-step form would
+  // race two near-simultaneous redeliveries; this can't, since the database
+  // itself is the single point of truth for "have I seen this id before."
+  private static recordEventOnce = async (eventId: string): Promise<boolean> => {
+    try {
+      await prismaClient.processedRevenueCatEvent.create({ data: { eventId } });
+      return true;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return false;
+      }
+      throw error;
+    }
   };
 }

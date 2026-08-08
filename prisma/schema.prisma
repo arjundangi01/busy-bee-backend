@@ -44,6 +44,17 @@ enum AuthProvider {
   GOOGLE
 }
 
+// DD-007 Account Deletion — anomaly types logged by both the account-deletion
+// routine and the RevenueCat webhook's orphan-user branch. SIGNATURE_INVALID
+// is deliberately absent: the existing requireRevenueCatSecret middleware
+// already rejects bad webhook secrets at the HTTP layer before a handler runs.
+enum SubscriptionErrorType {
+  USER_NOT_FOUND
+  CANCEL_FAILED
+  DUPLICATE_EVENT
+  UNKNOWN_EVENT_TYPE
+}
+
 enum WorkTypeTier {
   FREE
   PRO
@@ -156,6 +167,42 @@ model Subscription {
   autoRenewing          Boolean              @default(true)
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
+}
+
+// DD-007 Account Deletion — one row per completed deletion, written just
+// before the account and its data are hard-deleted. Deliberately holds no
+// personal product data (missions, tasks, etc.) — only what's needed to
+// reconcile a billing dispute after the account row is gone. `email` is NOT
+// unique: the same email can legitimately appear across multiple rows if a
+// user re-signs-up and deletes again later.
+model DeletionAudit {
+  id                            String              @id @default(cuid())
+  originalUserId                String
+  email                         String
+  revenueCatAppUserId           String?
+  subscriptionStatusAtDeletion  SubscriptionStatus?
+  deletedAt                     DateTime            @default(now())
+}
+
+// DD-007 Account Deletion — general-purpose log for RevenueCat webhook /
+// subscription-cancellation anomalies (see SubscriptionErrorType). `context`
+// carries whatever event payload/detail is relevant per anomaly type rather
+// than a fixed column set, since the shape differs by `type`.
+model SubscriptionErrorLog {
+  id        String                @id @default(cuid())
+  type      SubscriptionErrorType
+  context   Json
+  createdAt DateTime              @default(now())
+}
+
+// DD-007 Account Deletion — webhook event-id idempotency. RevenueCat can and
+// does redeliver events; the unique constraint on eventId is what makes
+// `handleRevenueCat`'s dedup check atomic (insert-or-detect-duplicate)
+// instead of a separate read-then-write that could race.
+model ProcessedRevenueCatEvent {
+  id        String   @id @default(cuid())
+  eventId   String   @unique
+  createdAt DateTime @default(now())
 }
 
 model Mission {
