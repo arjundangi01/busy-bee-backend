@@ -198,11 +198,17 @@ model SubscriptionErrorLog {
 // DD-007 Account Deletion — webhook event-id idempotency. RevenueCat can and
 // does redeliver events; the unique constraint on eventId is what makes
 // `handleRevenueCat`'s dedup check atomic (insert-or-detect-duplicate)
-// instead of a separate read-then-write that could race.
+// instead of a separate read-then-write that could race. `completedAt` is
+// set only once processing genuinely finishes — a row with `completedAt`
+// still null means a prior attempt started but crashed/errored before
+// finishing, so a redelivery is treated as a retry (reprocessed) rather
+// than a true duplicate. Without this, a transient failure mid-processing
+// would get permanently marked "done" and never get a second chance.
 model ProcessedRevenueCatEvent {
-  id        String   @id @default(cuid())
-  eventId   String   @unique
-  createdAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  eventId     String    @unique
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
 }
 
 model Mission {

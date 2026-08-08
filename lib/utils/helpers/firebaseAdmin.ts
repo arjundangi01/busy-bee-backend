@@ -33,6 +33,15 @@ const getFirebaseApp = () => {
   return initializeApp({ credential: cert(serviceAccount) });
 };
 
+// DD-007 Account Deletion — removes the Firebase Auth identity (email, uid)
+// backing a deleted account. Best-effort from the caller's perspective: if
+// Firebase isn't configured (getFirebaseApp throws) or the delete call
+// itself fails, the caller decides whether that should block deletion.
+export const deleteFirebaseUser = async (uid: string): Promise<void> => {
+  const app = getFirebaseApp();
+  await getAuth(app).deleteUser(uid);
+};
+
 export const verifyGoogleIdToken = async (idToken: string): Promise<IVerifiedGoogleUser> => {
   const app = getFirebaseApp();
 

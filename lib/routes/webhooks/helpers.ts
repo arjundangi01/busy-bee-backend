@@ -2,6 +2,7 @@ import { Prisma, SubscriptionErrorType, SubscriptionProvider, SubscriptionStatus
 import { prismaClient } from "@/db/db";
 import { logSubscriptionError } from "@/utils/helpers/subscriptionErrorLog";
 import { attemptSubscriptionCancellation } from "@/utils/helpers/subscriptionCancellation";
+import { isNonEmptyString } from "@/utils/helpers/common";
 import { IRevenueCatWebhookEvent } from "@/routes/webhooks/utils/types";
 
 const STORE_TO_PROVIDER: Record<string, SubscriptionProvider> = {
@@ -29,8 +30,20 @@ export class WebhooksHelpers {
   public static handleRevenueCat = async (payload: IRevenueCatWebhookEvent): Promise<void> => {
     const { event } = payload;
 
-    const isNewEvent = await WebhooksHelpers.recordEventOnce(event.id);
-    if (!isNewEvent) {
+    // Malformed delivery — nothing to key idempotency off of. Not one of
+    // the defined SubscriptionErrorType values (those describe anomalies in
+    // an otherwise-identifiable event), so this stays a console warning
+    // rather than a DB log.
+    if (!isNonEmptyString(event.id)) {
+      console.warn("RevenueCat webhook event missing id — skipping", {
+        eventType: event.type,
+        appUserId: event.app_user_id,
+      });
+      return;
+    }
+
+    const eventState = await WebhooksHelpers.recordEventOnce(event.id);
+    if (eventState === "duplicate") {
       await logSubscriptionError(SubscriptionErrorType.DUPLICATE_EVENT, {
         eventId: event.id,
         eventType: event.type,
@@ -39,6 +52,14 @@ export class WebhooksHelpers {
       return;
     }
 
+    // "retry" means a prior delivery of this same event started processing
+    // but never reached markEventCompleted (e.g. crashed mid-way) — treated
+    // like "new" and reprocessed, rather than permanently swallowed.
+    await WebhooksHelpers.processEvent(event);
+    await WebhooksHelpers.markEventCompleted(event.id);
+  };
+
+  private static processEvent = async (event: IRevenueCatWebhookEvent["event"]): Promise<void> => {
     const user = await prismaClient.user.findUnique({ where: { id: event.app_user_id } });
     if (!user) {
       // RevenueCat's app_user_id didn't match a real user (e.g. a sandbox/test
@@ -122,15 +143,26 @@ export class WebhooksHelpers {
   // separate exists-check followed by an insert — that two-step form would
   // race two near-simultaneous redeliveries; this can't, since the database
   // itself is the single point of truth for "have I seen this id before."
-  private static recordEventOnce = async (eventId: string): Promise<boolean> => {
+  // "duplicate" only for a row that reached markEventCompleted — a row that
+  // exists but never completed means the prior attempt errored out, so it's
+  // safe (and necessary) to reprocess rather than silently drop it forever.
+  private static recordEventOnce = async (eventId: string): Promise<"new" | "retry" | "duplicate"> => {
     try {
       await prismaClient.processedRevenueCatEvent.create({ data: { eventId } });
-      return true;
+      return "new";
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        return false;
+        const existing = await prismaClient.processedRevenueCatEvent.findUnique({ where: { eventId } });
+        return existing?.completedAt ? "duplicate" : "retry";
       }
       throw error;
     }
+  };
+
+  private static markEventCompleted = async (eventId: string): Promise<void> => {
+    await prismaClient.processedRevenueCatEvent.update({
+      where: { eventId },
+      data: { completedAt: new Date() },
+    });
   };
 }
