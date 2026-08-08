@@ -86,4 +86,11 @@ export const env = {
   // Firebase service-account JSON as a single-line string. POST /auth/google
   // returns a clear error until this is set for real.
   firebaseServiceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? null,
+  // DD-007 Account Deletion — optional, not required at boot — no real
+  // SendGrid account/API key exists yet. sendDeletionEmail() console.logs
+  // the confirmation URL instead of sending a real email until this is set.
+  sendgridApiKey: process.env.SENDGRID_API_KEY ?? null,
+  // DD-007 Account Deletion — base URL of the landing site, used to build the
+  // account-deletion confirmation link that gets emailed to the user.
+  landingUrl: process.env.LANDING_URL || "http://localhost:3000",
 };

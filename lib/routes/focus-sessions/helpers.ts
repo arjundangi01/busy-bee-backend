@@ -3,9 +3,15 @@ import { FocusSession, SessionEndReason, WorkTypeTier } from "@prisma/client";
 import { prismaClient } from "@/db/db";
 import { AppError } from "@/utils/helpers/appError";
 import { startOfUtcDay } from "@/utils/helpers/date";
-import { getPlanLimitsForUser } from "@/utils/helpers/entitlement";
+import { getPlanLimitsForUser, isUserPro } from "@/utils/helpers/entitlement";
 import { isNonEmptyString } from "@/utils/helpers/common";
 import { classifySessionRoughness } from "@/utils/helpers/sessionRoughness";
+import {
+  classifyDistractionTiming,
+  computeDistractionTimingBaseline,
+  computeElapsedPercent,
+  IDistractionTimingBaseline,
+} from "@/utils/helpers/distractionTiming";
 import { FocusSessionErrorCode } from "@/routes/focus-sessions/utils/enums";
 import {
   IEndFocusSessionPayload,
@@ -13,10 +19,18 @@ import {
   IPaginatedSessionHistory,
   IRecordBlockedAttemptPayload,
   ISessionSummary,
+  ISessionTimelineDistraction,
+  ISessionTimelineDto,
+  ISessionTimelineStep,
   IStartFocusSessionPayload,
 } from "@/routes/focus-sessions/utils/types";
 
 const HISTORY_PAGE_SIZE = 20;
+// Matches ProgressHelpers.buildWeekBuckets's own 8-week window -- bounded,
+// not all-time, both so the baseline query stays cheap as history grows and
+// so old behavior doesn't anchor "normal" for a user whose habits have
+// since changed.
+const BASELINE_WINDOW_DAYS = 56;
 
 // design-artifacts/evolution/specs/03-companion-work-types.md's pacing
 // decision, now scaled dynamically (see computeWorkUnitsCompleted) so the
@@ -119,6 +133,146 @@ export class FocusSessionsHelpers {
     const hasMore = startIndex + pageSize < allSummaries.length;
 
     return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
+  };
+
+  // design-artifacts/evolution/specs/14-session-timeline.md — the Track 2
+  // destination for a tapped session row. Server-side Pro gate (not just a
+  // client-side hide) is a deliberate stricter choice than
+  // ProgressHelpers.computeDeviceActivity's existing precedent, following
+  // HiveThemeHelpers/BeeSkinHelpers's own real isUserPro-in-the-helper
+  // pattern instead.
+  public static getTimeline = async (userId: string, focusSessionId: string): Promise<ISessionTimelineDto> => {
+    if (!(await isUserPro(userId))) {
+      throw new AppError(
+        "Session Timeline requires Pro",
+        httpStatus.FORBIDDEN,
+        FocusSessionErrorCode.SESSION_TIMELINE_REQUIRES_PRO,
+      );
+    }
+
+    const session = await prismaClient.focusSession.findFirst({
+      where: { id: focusSessionId, mission: { userId } },
+      include: {
+        mission: { select: { title: true, tasks: { orderBy: { order: "asc" } } } },
+        blockedAttemptEvents: { orderBy: { occurredAt: "asc" } },
+      },
+    });
+    if (!session || !session.endedAt) {
+      throw new AppError("Focus session not found", httpStatus.NOT_FOUND);
+    }
+    const sessionStart = session.startedAt;
+    const sessionEnd = session.endedAt;
+
+    const [allUserSessions, blockedApps] = await Promise.all([
+      prismaClient.focusSession.findMany({
+        where: { mission: { userId }, endedAt: { not: null } },
+        select: { id: true, startedAt: true },
+      }),
+      prismaClient.blockedApp.findMany({ where: { userId }, select: { packageName: true, appName: true } }),
+    ]);
+    const appNameByPackage = new Map(blockedApps.map((app) => [app.packageName, app.appName]));
+    const roughness = classifySessionRoughness(session, allUserSessions);
+
+    // Steps: clip each task's window to this session's own boundary. A
+    // MissionTask has no focusSessionId (a mission can span multiple
+    // sessions, Track 1's own finding) -- only tasks that actually overlap
+    // this session belong on its timeline, and a task begun in an earlier
+    // session shows only its in-session portion here, never its true
+    // original start.
+    const steps: ISessionTimelineStep[] = [];
+    for (const task of session.mission.tasks) {
+      if (task.startedAt === null) continue;
+      if (task.startedAt > sessionEnd) continue;
+      if (task.completedAt !== null && task.completedAt < sessionStart) continue;
+
+      const clippedStart = task.startedAt > sessionStart ? task.startedAt : sessionStart;
+      const clippedEnd = task.completedAt !== null && task.completedAt < sessionEnd ? task.completedAt : sessionEnd;
+
+      steps.push({
+        id: task.id,
+        title: task.title,
+        startedAt: clippedStart.toISOString(),
+        completedAt: task.completedAt !== null && task.completedAt <= sessionEnd ? task.completedAt.toISOString() : null,
+        actualSeconds: Math.max(0, Math.round((clippedEnd.getTime() - clippedStart.getTime()) / 1000)),
+        estimatedMinutes: task.estimatedMinutes,
+      });
+    }
+
+    const stepIdForMoment = (occurredAt: Date): string | null => {
+      const step = steps.find((candidate) => {
+        const start = new Date(candidate.startedAt);
+        const end = candidate.completedAt ? new Date(candidate.completedAt) : sessionEnd;
+        return occurredAt >= start && occurredAt <= end;
+      });
+      return step?.id ?? null;
+    };
+
+    const distractions: ISessionTimelineDistraction[] = session.blockedAttemptEvents.map((event) => ({
+      id: event.id,
+      occurredAt: event.occurredAt.toISOString(),
+      packageName: event.packageName,
+      appName: appNameByPackage.get(event.packageName) ?? null,
+      stepId: stepIdForMoment(event.occurredAt),
+    }));
+
+    const firstBlock = session.blockedAttemptEvents[0] ?? null;
+    const firstBlockElapsedPercent = firstBlock
+      ? computeElapsedPercent(sessionStart, sessionEnd, firstBlock.occurredAt)
+      : null;
+    const firstBlockElapsedSeconds = firstBlock
+      ? Math.max(0, Math.round((firstBlock.occurredAt.getTime() - sessionStart.getTime()) / 1000))
+      : null;
+
+    const baseline = await FocusSessionsHelpers.computeDistractionTimingBaselineForUser(userId, session.id);
+    const distractionTiming = classifyDistractionTiming(
+      session.blockedAttemptCount,
+      firstBlockElapsedSeconds,
+      firstBlockElapsedPercent,
+      baseline,
+    );
+
+    return {
+      id: session.id,
+      missionId: session.missionId,
+      missionTitle: session.mission.title,
+      startedAt: session.startedAt.toISOString(),
+      endedAt: sessionEnd.toISOString(),
+      sessionEndReason: session.sessionEndReason,
+      roughness,
+      steps,
+      distractions,
+      distractionTiming,
+    };
+  };
+
+  // excludeSessionId keeps the tapped session out of its own baseline --
+  // otherwise a small sample near MIN_BASELINE_SESSIONS would be biased
+  // toward comparing this session against itself.
+  private static computeDistractionTimingBaselineForUser = async (
+    userId: string,
+    excludeSessionId: string,
+  ): Promise<IDistractionTimingBaseline> => {
+    const cutoff = new Date(Date.now() - BASELINE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const candidateSessions = await prismaClient.focusSession.findMany({
+      where: {
+        mission: { userId },
+        id: { not: excludeSessionId },
+        endedAt: { not: null },
+        blockedAttemptCount: { gt: 0 },
+        startedAt: { gte: cutoff },
+      },
+      select: {
+        startedAt: true,
+        endedAt: true,
+        blockedAttemptEvents: { orderBy: { occurredAt: "asc" }, take: 1, select: { occurredAt: true } },
+      },
+    });
+
+    const percents = candidateSessions
+      .filter((candidate) => candidate.endedAt !== null && candidate.blockedAttemptEvents.length > 0)
+      .map((candidate) => computeElapsedPercent(candidate.startedAt, candidate.endedAt!, candidate.blockedAttemptEvents[0].occurredAt));
+
+    return computeDistractionTimingBaseline(percents);
   };
 
   // Uses the user's Bee's Hive selection if they've made one; falls back to
