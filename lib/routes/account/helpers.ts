@@ -8,6 +8,7 @@ import { deleteFirebaseUser } from "@/utils/helpers/firebaseAdmin";
 import { env } from "@/utils/configuration/env";
 import { sendDeletionEmail } from "@/services/email/sendDeletionEmail";
 import { createDeletionToken, verifyDeletionToken } from "@/routes/account/utils/token";
+import { IDeleteConfirmPayload, IDeleteRequestPayload } from "@/routes/account/utils/types";
 
 const INVALID_TOKEN_MESSAGE = "This link is invalid or has expired";
 
@@ -21,13 +22,8 @@ const STILL_BILLING_STATUSES = new Set<SubscriptionStatus>([
   SubscriptionStatus.BILLING_ISSUE,
 ]);
 
-// Guards against non-object bodies before any property access — same
-// precedent as blocklist/helpers.ts's parseBlockedAppInput.
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 export class AccountHelpers {
-  public static requestDeletion = async (payload: unknown): Promise<void> => {
+  public static requestDeletion = async (payload: IDeleteRequestPayload): Promise<void> => {
     const email = AccountHelpers.parseEmail(payload);
 
     // No enumeration: caller always sends the same generic response
@@ -41,7 +37,7 @@ export class AccountHelpers {
     }
   };
 
-  public static confirmDeletion = async (payload: unknown): Promise<void> => {
+  public static confirmDeletion = async (payload: IDeleteConfirmPayload): Promise<void> => {
     const token = AccountHelpers.parseToken(payload);
 
     const decoded = verifyDeletionToken(token);
@@ -111,7 +107,10 @@ export class AccountHelpers {
             subscriptionStatusAtDeletion: subscription?.status ?? null,
           },
         });
-        await AccountHelpers.hardDeleteUserData(tx, userId);
+        // DB-level onDelete: Cascade (schema.prisma) handles every dependent
+        // row — missions, tasks, focus sessions, blocked-attempt events,
+        // blocklist, usage/activity rollups, subscription — in this one call.
+        await tx.user.delete({ where: { id: userId } });
       });
     } catch (error) {
       // A concurrent or retried call already deleted this user (e.g. a
@@ -124,41 +123,15 @@ export class AccountHelpers {
     }
   };
 
-  // FK order matters — every relation below is ON DELETE RESTRICT, so
-  // children must go before their parents or the transaction fails.
-  private static hardDeleteUserData = async (
-    tx: Prisma.TransactionClient,
-    userId: string,
-  ): Promise<void> => {
-    const missions = await tx.mission.findMany({ where: { userId }, select: { id: true } });
-    const missionIds = missions.map((mission) => mission.id);
-
-    const focusSessions = await tx.focusSession.findMany({
-      where: { missionId: { in: missionIds } },
-      select: { id: true },
-    });
-    const focusSessionIds = focusSessions.map((session) => session.id);
-
-    await tx.blockedAttemptEvent.deleteMany({ where: { focusSessionId: { in: focusSessionIds } } });
-    await tx.focusSession.deleteMany({ where: { missionId: { in: missionIds } } });
-    await tx.missionTask.deleteMany({ where: { missionId: { in: missionIds } } });
-    await tx.mission.deleteMany({ where: { userId } });
-    await tx.blockedApp.deleteMany({ where: { userId } });
-    await tx.appUsageDaily.deleteMany({ where: { userId } });
-    await tx.deviceActivityDaily.deleteMany({ where: { userId } });
-    await tx.subscription.deleteMany({ where: { userId } });
-    await tx.user.delete({ where: { id: userId } });
-  };
-
-  private static parseEmail = (payload: unknown): string => {
-    if (!isRecord(payload) || !isNonEmptyString(payload.email) || !payload.email.includes("@")) {
+  private static parseEmail = (payload: IDeleteRequestPayload): string => {
+    if (!isNonEmptyString(payload.email) || !payload.email.includes("@")) {
       throw new AppError("A valid email is required", httpStatus.BAD_REQUEST);
     }
     return payload.email.trim().toLowerCase();
   };
 
-  private static parseToken = (payload: unknown): string => {
-    if (!isRecord(payload) || !isNonEmptyString(payload.token)) {
+  private static parseToken = (payload: IDeleteConfirmPayload): string => {
+    if (!isNonEmptyString(payload.token)) {
       throw new AppError("A token is required", httpStatus.BAD_REQUEST);
     }
     return payload.token;

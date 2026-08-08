@@ -158,7 +158,7 @@ model User {
 model Subscription {
   id                    String               @id @default(cuid())
   userId                String               @unique
-  user                  User                 @relation(fields: [userId], references: [id])
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   status                SubscriptionStatus
   provider              SubscriptionProvider
   productId             String
@@ -176,12 +176,12 @@ model Subscription {
 // unique: the same email can legitimately appear across multiple rows if a
 // user re-signs-up and deletes again later.
 model DeletionAudit {
-  id                            String              @id @default(cuid())
-  originalUserId                String
-  email                         String
-  revenueCatAppUserId           String?
-  subscriptionStatusAtDeletion  SubscriptionStatus?
-  deletedAt                     DateTime            @default(now())
+  id                           String              @id @default(cuid())
+  originalUserId               String
+  email                        String
+  revenueCatAppUserId          String?
+  subscriptionStatusAtDeletion SubscriptionStatus?
+  deletedAt                    DateTime            @default(now())
 }
 
 // DD-007 Account Deletion — general-purpose log for RevenueCat webhook /
@@ -214,7 +214,7 @@ model ProcessedRevenueCatEvent {
 model Mission {
   id               String        @id @default(cuid())
   userId           String
-  user             User          @relation(fields: [userId], references: [id])
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   title            String
   // The user-confirmed focus duration for this mission (seeded from the AI's
   // estimatedMinutes, adjustable before Start — see MissionsHelpers.create),
@@ -232,7 +232,7 @@ model Mission {
 model MissionTask {
   id               String     @id @default(cuid())
   missionId        String
-  mission          Mission    @relation(fields: [missionId], references: [id])
+  mission          Mission    @relation(fields: [missionId], references: [id], onDelete: Cascade)
   title            String
   order            Int
   // Per-step time budget — not populated yet (the mission-level estimate on
@@ -256,7 +256,7 @@ model MissionTask {
 model BlockedApp {
   id          String   @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   packageName String
   appName     String
   createdAt   DateTime @default(now())
@@ -267,7 +267,7 @@ model BlockedApp {
 model FocusSession {
   id                  String            @id @default(cuid())
   missionId           String
-  mission             Mission           @relation(fields: [missionId], references: [id])
+  mission             Mission           @relation(fields: [missionId], references: [id], onDelete: Cascade)
   startedAt           DateTime          @default(now())
   endedAt             DateTime?
   elapsedSeconds      Int?
@@ -297,7 +297,7 @@ model FocusSession {
 model BlockedAttemptEvent {
   id             String       @id @default(cuid())
   focusSessionId String
-  focusSession   FocusSession @relation(fields: [focusSessionId], references: [id])
+  focusSession   FocusSession @relation(fields: [focusSessionId], references: [id], onDelete: Cascade)
   packageName    String
   occurredAt     DateTime     @default(now())
 }
@@ -313,7 +313,7 @@ model BlockedAttemptEvent {
 model AppUsageDaily {
   id                String   @id @default(cuid())
   userId            String
-  user              User     @relation(fields: [userId], references: [id])
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   date              String
   packageName       String
   appName           String
@@ -330,7 +330,7 @@ model AppUsageDaily {
 model DeviceActivityDaily {
   id             String    @id @default(cuid())
   userId         String
-  user           User      @relation(fields: [userId], references: [id])
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   date           String
   pickupCount    Int
   firstPickupAt  DateTime?
