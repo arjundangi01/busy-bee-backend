@@ -13,6 +13,7 @@ import {
   IDistractionTimingBaseline,
 } from "@/utils/helpers/distractionTiming";
 import { FocusSessionErrorCode } from "@/routes/focus-sessions/utils/enums";
+import { activeSessionWhere, SAFETY_NET_SECONDS } from "@/routes/focus-sessions/utils/sessionStatus";
 import {
   IEndFocusSessionPayload,
   IFocusSessionDto,
@@ -44,8 +45,10 @@ export class FocusSessionsHelpers {
     userId: string,
     payload: IStartFocusSessionPayload,
   ): Promise<IFocusSessionDto> => {
+    const isPro = await isUserPro(userId);
+
     const existingActive = await prismaClient.focusSession.findFirst({
-      where: { endedAt: null, mission: { userId } },
+      where: { ...activeSessionWhere(isPro), mission: { userId } },
     });
     if (existingActive) {
       throw new AppError(
@@ -78,16 +81,26 @@ export class FocusSessionsHelpers {
 
     const workTypeId = await FocusSessionsHelpers.resolveWorkTypeId(userId);
 
+    // Locked in now, from the cap in force at this exact moment -- see the
+    // expiredAt field comment on the FocusSession model for why this isn't
+    // recomputed later.
+    const capSeconds = await FocusSessionsHelpers.getEffectiveDurationCapSeconds(
+      userId,
+      mission.estimatedMinutes,
+    );
+    const expiredAt = new Date(Date.now() + (capSeconds ?? SAFETY_NET_SECONDS) * 1000);
+
     const session = await prismaClient.focusSession.create({
-      data: { missionId: mission.id, workTypeId },
+      data: { missionId: mission.id, workTypeId, expiredAt },
     });
 
     return FocusSessionsHelpers.toDto(session);
   };
 
   public static getActive = async (userId: string): Promise<IFocusSessionDto | null> => {
+    const isPro = await isUserPro(userId);
     const session = await prismaClient.focusSession.findFirst({
-      where: { endedAt: null, mission: { userId } },
+      where: { ...activeSessionWhere(isPro), mission: { userId } },
       orderBy: { startedAt: "desc" },
     });
     return session ? FocusSessionsHelpers.toDto(session) : null;
@@ -341,6 +354,15 @@ export class FocusSessionsHelpers {
     }
 
     const session = await FocusSessionsHelpers.findOwnedSession(userId, focusSessionId);
+
+    // Idempotent: a manual "Done"/exit and the cron sweep can race to end
+    // the same abandoned session. Whichever write lands first wins; the
+    // second is a no-op that returns the already-ended state rather than
+    // re-computing (and potentially overwriting) elapsedSeconds/workUnits.
+    if (session.endedAt !== null) {
+      return FocusSessionsHelpers.toDto(session);
+    }
+
     const endedAt = new Date();
     const actualElapsedSeconds = Math.round((endedAt.getTime() - session.startedAt.getTime()) / 1000);
 
@@ -428,6 +450,7 @@ export class FocusSessionsHelpers {
     missionId: session.missionId,
     startedAt: session.startedAt.toISOString(),
     endedAt: session.endedAt?.toISOString() ?? null,
+    expiredAt: session.expiredAt.toISOString(),
     elapsedSeconds: session.elapsedSeconds,
     sessionEndReason: session.sessionEndReason,
     blockedAttemptCount: session.blockedAttemptCount,

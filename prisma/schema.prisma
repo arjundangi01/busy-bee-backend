@@ -270,6 +270,15 @@ model FocusSession {
   mission             Mission           @relation(fields: [missionId], references: [id], onDelete: Cascade)
   startedAt           DateTime          @default(now())
   endedAt             DateTime?
+  // Set once at session creation from the effective duration cap in force
+  // at that moment (see FocusSessionsHelpers.start) — never recomputed, so
+  // a later change to plan limits doesn't retroactively alter an
+  // already-running session. For Free this is the real enforced cap; for
+  // Pro (no real cap) it's a fixed 24h safety net the cron sweep uses to
+  // close out abandoned sessions. Whether it gates "is this session
+  // active" is tier-dependent — see sessionStatus.ts, the single place
+  // that owns this rule.
+  expiredAt           DateTime
   elapsedSeconds      Int?
   sessionEndReason    SessionEndReason?
   blockedAttemptCount Int               @default(0)
