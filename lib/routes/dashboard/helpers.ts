@@ -88,14 +88,22 @@ export class DashboardHelpers {
     };
   };
 
+  // Fixed calendar week (Mon-Sun, ISO 8601) rather than a rolling 7-day
+  // window — today lands wherever it actually falls in the week, not always
+  // in the last slot. Days after today have no hits yet and render as "miss"
+  // (an empty box), same as a day that happened but wasn't hit.
   private static buildTrend = (completedMissionDates: Date[]): ITrendDay[] => {
     const hitDays = new Set(completedMissionDates.map(dayKey));
-    const todayKey = dayKey(new Date());
-    const days: ITrendDay[] = [];
+    const now = new Date();
+    const todayKey = dayKey(now);
+    const daysSinceMonday = (now.getUTCDay() + 6) % 7;
+    const weekStart = new Date(now);
+    weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
 
-    for (let offset = TREND_DAYS - 1; offset >= 0; offset -= 1) {
-      const cursor = new Date();
-      cursor.setDate(cursor.getDate() - offset);
+    const days: ITrendDay[] = [];
+    for (let offset = 0; offset < TREND_DAYS; offset += 1) {
+      const cursor = new Date(weekStart);
+      cursor.setUTCDate(cursor.getUTCDate() + offset);
       const key = dayKey(cursor);
       days.push({
         date: key,
