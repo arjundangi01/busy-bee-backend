@@ -84,6 +84,13 @@ model User {
   id           String       @id @default(cuid())
   name         String
   email        String       @unique
+  // Global entitlement override (isUserPro in utils/helpers/entitlement.ts) —
+  // admin accounts get Pro access regardless of subscription state. Defaults
+  // false and is intentionally absent from every payload/DTO type in this
+  // codebase: no route's `data: {...}` update ever names this field, so no
+  // API request body can set it no matter what it contains — only a direct
+  // DB write (Prisma Studio, a migration, a script run by a human) can.
+  isAdmin      Boolean      @default(false)
   // Nullable: Google-only accounts (authProvider GOOGLE) have no password —
   // real gap flagged since DD-001's 3.2 Sign Up/Sign In build.
   passwordHash String?

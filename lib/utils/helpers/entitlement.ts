@@ -18,9 +18,19 @@ export const deriveIsPro = (subscription: Subscription | null): boolean => {
   return true;
 };
 
+// The single source of truth for "does this user have Pro access" — every
+// route (BE) and the /subscription/status response consumed by the FE's
+// useEntitlement hook must go through this, never re-derive it from a raw
+// subscription row. Admin override takes priority; more override
+// conditions (e.g. promo/comp access) belong here too, not at call sites.
 export const isUserPro = async (userId: string): Promise<boolean> => {
-  const subscription = await prismaClient.subscription.findUnique({ where: { userId } });
-  return deriveIsPro(subscription);
+  const user = await prismaClient.user.findUnique({
+    where: { id: userId },
+    select: { isAdmin: true, subscription: true },
+  });
+  if (!user) return false;
+  if (user.isAdmin) return true;
+  return deriveIsPro(user.subscription);
 };
 
 // Free/Pro limits are config rows (PlanLimits), not source constants — this
